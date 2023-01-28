@@ -56,3 +56,14 @@ typedef struct Grs {
     TAILQ_HEAD(RiderList, Rider) riderList[GenderMax][AgeGrpMax];
     int sd;                             // file descriptor of the listening socket
 } Grs;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static __inline__ socklen_t ssLen(const struct sockaddr_storage *sockAddr) { return (sockAddr->ss_family == AF_INET) ? sizeof (struct sockaddr_in) : sizeof (struct sockaddr_in6); }
+
+#ifdef __cplusplus
+}
+#endif
+

@@ -1,11 +1,15 @@
-#include <arpa/inet.h>
-#include <netinet/in.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
 
 
 #include "defs.h"
+#include "grs.h"
 
 #define PROGRAM_VERSION     "0.0"
 
@@ -148,10 +152,19 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
 int main(int argc, char *argv[])
 {
     CmdArgs cmdArgs = {0};
+    Grs grs = {0};
 
     // Parse the command-line arguments
     if (parseCmdArgs(argc, argv, &cmdArgs) != 0) {
         fprintf(stderr, "Use --help for the list of supported options.\n\n");
+        return -1;
+    }
+
+
+
+    // Start the main work loop...
+    if (grsMain(&grs, &cmdArgs) != 0) {
+        fprintf(stderr, "Something went wrong. BYE!\n");
         return -1;
     }
 
