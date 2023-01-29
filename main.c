@@ -58,6 +58,11 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
 {
     int numArgs = argc - 1;
 
+    // Set the default values
+    pArgs->maxRiders = 100;
+    pArgs->reportPeriod = 1;
+    pArgs->tcpPort = DEF_TCP_PORT;
+
     for (int n = 1; n <= numArgs; n++) {
         const char *arg;
         const char *val;
