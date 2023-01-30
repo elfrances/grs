@@ -7,14 +7,101 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 
 #include "grs.h"
 
+// Format a SockAddrStore object as the string: <ipAddr>[<portNum>]
+#define SSFMT_BUF_LEN   (INET6_ADDRSTRLEN+1+5+1)
+static char *ssFmt(const SockAddrStore *pSock, char *fmtBuf, size_t bufLen, Bool printPort)
+{
+    size_t len = (printPort) ? 7 : 0;
+    void *pAddr;
+    uint16_t port;
+
+    if (pSock->ss_family == AF_INET) {
+        len += INET_ADDRSTRLEN;
+        pAddr = &((SockAddrIn *) pSock)->sin_addr;
+        port = ((SockAddrIn *) pSock)->sin_port;
+    } else if (pSock->ss_family == AF_INET6) {
+        len += INET6_ADDRSTRLEN;
+        pAddr = &((SockAddrIn6 *) pSock)->sin6_addr;
+        port = ((SockAddrIn6 *) pSock)->sin6_port;
+    } else {
+        snprintf(fmtBuf, bufLen, "af=%d invalid!", pSock->ss_family);
+        return fmtBuf;
+    }
+
+    if (bufLen < len) {
+        snprintf(fmtBuf, bufLen, "bufLen=%zu too small!", bufLen);
+        return fmtBuf;
+    }
+
+    inet_ntop(pSock->ss_family, pAddr, fmtBuf, bufLen);
+    if (printPort) {
+        size_t sLen = strlen(fmtBuf);
+        char *pBuf = fmtBuf + sLen;
+        snprintf(pBuf, (bufLen - sLen), "[%5u]", ntohs(port));
+    }
+
+    return fmtBuf;
+}
+
+static void buildPollFds(Grs *pGrs)
+{
+    int n = 0;
+
+    // The first entry is always the file descriptor
+    // of the listening socket.
+    pGrs->pollFds[n].fd = pGrs->sd;
+    pGrs->pollFds[n].events = POLLIN;
+    pGrs->pollFds[n++].revents = 0;
+
+    // Now add an entry for each connected socket
+    for (Gender gender = unspec; gender < GenderMax; gender++) {
+        for (AgeGrp ageGrp = undef; ageGrp < AgeGrpMax; ageGrp++) {
+            Rider *pRider;
+            TAILQ_FOREACH(pRider, &pGrs->riderList[gender][ageGrp], tqEntry) {
+                if (pRider->state != unknown) {
+                    pGrs->pollFds[n].fd = pRider->sd;
+                    pGrs->pollFds[n].events = (POLLIN | POLLRDHUP);
+                    pGrs->pollFds[n++].revents = 0;
+                }
+            }
+        }
+    }
+
+    pGrs->numFds = n;
+
+#if 0
+    {
+        printf("%s: ", __func__);
+        for (n = 0; n < pGrs->numFds; n++) {
+            printf("%d:{fd=%d evt=%x revt=%x} ", n, pGrs->pollFds[n].fd, pGrs->pollFds[n].events, pGrs->pollFds[n].revents);
+        }
+        printf("\n");
+    }
+#endif
+
+    // Done!
+    pGrs->rebuildPollFds = false;
+}
+
 static int configGrsSock(Grs *pGrs, const CmdArgs *pArgs)
 {
+    int enable = 1;
+
     // Open the listening TCP socket
     if ((pGrs->sd = socket(pArgs->sockAddr.ss_family, SOCK_STREAM, 0)) < 0) {
         fprintf(stderr, "ERROR: failed to open TCP socket! (%s)\n", strerror(errno));
+        return -1;
+    }
+
+    // Set REUSEADDR option on the listening socket to
+    // allow the server to restart quickly.
+    if (setsockopt(pGrs->sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof (enable)) != 0) {
+        fprintf(stderr, "ERROR: failed to set SO_REUSEADDR option! (%s)\n", strerror(errno));
+        close(pGrs->sd);
         return -1;
     }
 
@@ -32,27 +119,117 @@ static int configGrsSock(Grs *pGrs, const CmdArgs *pArgs)
         return -1;
     }
 
-    // Add the listening socket as the first entry in
-    // the pollFds array
-    pGrs->pollFds[0].fd = pGrs->sd;
-    pGrs->pollFds[0].events = POLLIN;
+    // Build the pollFds array
+    buildPollFds(pGrs);
+
+    return 0;
+}
+
+static int procConnect(Grs *pGrs, const CmdArgs *pArgs)
+{
+    int sd;
+    SockAddrStore sockAddr;
+    socklen_t addrLen = sizeof (sockAddr);
+    int noDelay = 1;
+    Rider *pRider;
+
+    // Accept the new connection
+    if ((sd = accept(pGrs->pollFds[0].fd, (SockAddr *) &sockAddr, &addrLen)) < 0) {
+        fprintf(stderr, "ERROR: failed to accept new connection! (%s)\n", strerror(errno));
+        return -1;
+    }
+
+    // Disable Nagel's algo
+    if (setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, &noDelay, sizeof (noDelay)) != 0) {
+        fprintf(stderr, "ERROR: failed to set TCP_NODELAY option! (%s)\n", strerror(errno));
+        close(sd);
+        return -1;
+    }
+
+    {
+        char fmtBuf[SSFMT_BUF_LEN];
+        printf("New connection: sd=%d addr=%s\n", sd, ssFmt(&sockAddr, fmtBuf, sizeof (fmtBuf), true));
+    }
+
+    if ((pRider = calloc(1, sizeof (Rider))) == NULL) {
+        fprintf(stderr, "ERROR: failed to alloc Rider object! (%s)\n", strerror(errno));
+        close(sd);
+        return -1;
+    }
+
+    // Init what we can at this point
+    pRider->sd = sd;
+    pRider->sockAddr = sockAddr;
+    pRider->state = connected;
+
+    // Until the app sends the REG_REQ message, place the
+    // new rider in the general category...
+    TAILQ_INSERT_HEAD(&pGrs->riderList[unspec][undef], pRider, tqEntry);
+
+    // Need to rebuild the pollFds array
+    pGrs->rebuildPollFds = true;
+
+    return 0;
+}
+
+static int procDisconnect(Grs *pGrs, const CmdArgs *pArgs, int fd)
+{
+    for (Gender gender = unspec; gender < GenderMax; gender++) {
+        for (AgeGrp ageGrp = undef; ageGrp < AgeGrpMax; ageGrp++) {
+            Rider *pRider;
+            TAILQ_FOREACH(pRider, &pGrs->riderList[gender][ageGrp], tqEntry) {
+                if (pRider->sd == fd) {
+                    {
+                        char fmtBuf[SSFMT_BUF_LEN];
+                        printf("Disconnected: sd=%d addr=%s\n", fd, ssFmt(&pRider->sockAddr, fmtBuf, sizeof (fmtBuf), true));
+                    }
+                    close(fd);
+                    pRider->state = unknown;
+                }
+            }
+        }
+    }
+
+    // Need to rebuild the pollFds array
+    pGrs->rebuildPollFds = true;
+
+    return 0;
+}
+
+static int procData(Grs *pGrs, const CmdArgs *pArgs, int fd)
+{
+    printf("Data available: fd=%d\n", fd);
 
     return 0;
 }
 
 int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
 {
-    // Check for new connections
+    // First check for new connections
     if (pGrs->pollFds[0].revents & POLLIN) {
-        int cliSd;
-        SockAddrStore cliAddr;
-        socklen_t addrLen = sizeof (cliAddr);
-
-        if ((cliSd = accept(pGrs->pollFds[0].fd, (SockAddr *) &cliAddr, &addrLen)) < 0) {
-            fprintf(stderr, "ERROR: failed to accept new connection! (%s)\n", strerror(errno));
+        if (procConnect(pGrs, pArgs) != 0) {
+            fprintf(stderr, "ERROR: failed to create new connection!\n");
             return -1;
         }
-        printf("New connection: cliSd=%d\n", cliSd);
+    }
+
+    // Next check for events on any of the connected sockets
+    for (int n = 1; n < pGrs->numFds; n++) {
+        int revents = pGrs->pollFds[n].revents;
+        if (revents & (POLLRDHUP | POLLHUP)) {
+            procDisconnect(pGrs, pArgs, pGrs->pollFds[n].fd);
+        } else if (revents & POLLIN) {
+            procData(pGrs, pArgs, pGrs->pollFds[n].fd);
+        } else if (revents != 0) {
+            fprintf(stderr, "ERROR: unknown event! fd=%d revents=%x\n",
+                    pGrs->pollFds[n].fd, pGrs->pollFds[n].revents);
+            return -1;
+        }
+    }
+
+    if (pGrs->rebuildPollFds) {
+        // Rebuild the pollFds array
+        buildPollFds(pGrs);
     }
 
     return 0;
@@ -89,7 +266,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
 
         // Wait for an event on any of the file descriptors or
         // until the report period expires...
-        if ((nFds = ppoll(pGrs->pollFds, (pGrs->numRegRiders+1), &reportPeriod, NULL)) < 0) {
+        if ((nFds = ppoll(pGrs->pollFds, pGrs->numFds, &reportPeriod, NULL)) < 0) {
             fprintf(stderr, "ERROR: failed to wait for file descriptor events! (%s)\n", strerror(errno));
             return -1;
         }
@@ -102,9 +279,10 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
             }
         }
 
+        // Is it time to send the report messages?
         clock_gettime(CLOCK_REALTIME, &now);
         tvSub(&deltaT, &now, &pGrs->lastReport);
-        if (tvCmp(&deltaT, &reportPeriod) >+ 0) {
+        if (tvCmp(&deltaT, &reportPeriod) >= 0) {
             // Send the report message to the clients
             if (sendReportMsg(pGrs, pArgs) != 0) {
                 // Error message already printed

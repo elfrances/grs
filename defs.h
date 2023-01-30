@@ -56,22 +56,35 @@ typedef enum AgeGrp {
     AgeGrpMax = 16
 } AgeGrp;
 
+typedef enum RiderState {
+    unknown = 0,    //
+    connected = 1,  // Connected but not yet registered
+    registered = 2, // Registered but not yet active
+    active = 3      // Active
+} RiderState;
+
 // Rider
 typedef struct Rider {
     int age;                    // rider's age (as of Dec 31 of the current year)
     AgeGrp ageGrp;              // rider's age group
+    int bibNum;                 // rider's bib number
     Gender gender;              // rider's gender
     char *name;                 // rider's name or alias
     time_t regTime;             // time (UTC) the rider registered with the GRS
     int sd;                     // file descriptor of the connected socket
     SockAddrStore sockAddr;     // remote IP address and TCP port
+    RiderState state;           // rider's current state
+
+    TAILQ_ENTRY(Rider) tqEntry; // node in the riderList
 } Rider;
 
 // Group Ride Server
 typedef struct Grs {
     Timespec lastReport;        // time the last report was sent to the clients
+    int numFds;                 // number of entries in the pollFds array
     int numRegRiders;           // current number of registered riders
-    PollFd *pollFds;            // list of file descriptors to be monitored
+    PollFd *pollFds;            // array of file descriptors to be monitored
+    Bool rebuildPollFds;        // pollFds array needs to be rebuilt
 
     // List of registered riders per gender and age group
     TAILQ_HEAD(RiderList, Rider) riderList[GenderMax][AgeGrpMax];
