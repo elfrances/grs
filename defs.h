@@ -24,6 +24,7 @@ typedef enum Bool {
 typedef struct CmdArgs {
     int maxRiders;              // Max number of riders that can join the group ride
     int reportPeriod;           // Period (in seconds) the client app needs to send its progress update messages
+    char *rideName;             // the name of the group ride
     SockAddrStore sockAddr;     // IP address and TCP port (in network byte order) used by GRS to listen for client connections
     time_t startTime;           // Start date/time (in UTC) for the group ride
     int tcpPort;                // TCP port used by the listening socket
@@ -68,6 +69,7 @@ typedef struct Rider {
     int age;                    // rider's age (as of Dec 31 of the current year)
     AgeGrp ageGrp;              // rider's age group
     int bibNum;                 // rider's bib number
+    int distance;               // rider's current distance (in meters) so far
     Gender gender;              // rider's gender
     char *name;                 // rider's name or alias
     time_t regTime;             // time (UTC) the rider registered with the GRS
@@ -85,6 +87,7 @@ typedef struct Grs {
     int numRegRiders;           // current number of registered riders
     PollFd *pollFds;            // array of file descriptors to be monitored
     Bool rebuildPollFds;        // pollFds array needs to be rebuilt
+    Bool rideActive;            // is the group ride active?
 
     // List of registered riders per gender and age group
     TAILQ_HEAD(RiderList, Rider) riderList[GenderMax][AgeGrpMax];

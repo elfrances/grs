@@ -32,6 +32,8 @@ static const char *help =
         "    --report-period <secs>\n"
         "        Specifies the period (in seconds) the client app's need to send\n"
         "        their update messages to the server.\n"
+        "    --ride-name <name>\n"
+        "        Specifies the name of the group ride.\n"
         "    --start-time <time>\n"
         "        Specifies the start date and time (in ISO 8601 UTC format) of\n"
         "        the group ride.\n"
@@ -105,12 +107,12 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
             } else if (sscanf(val, "%d", &pArgs->reportPeriod) != 1) {
                 return invArg(val);
             }
-        } else if (strcmp(arg, "--tcp-port") == 0) {
+        } else if (strcmp(arg, "--ride-name") == 0) {
             val = argv[++n];
             if (val == NULL) {
-                return missArg(arg, "<num>");
-            } else if (sscanf(val, "%d", &pArgs->tcpPort) != 1) {
-                return invArg(val);
+                return missArg(arg, "<name>");
+            } else {
+                pArgs->rideName = strdup(val);
             }
         } else if (strcmp(arg, "--start-time") == 0) {
             val = argv[++n];
@@ -124,6 +126,13 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
                     return invArg(val);
                 }
             }
+        } else if (strcmp(arg, "--tcp-port") == 0) {
+            val = argv[++n];
+            if (val == NULL) {
+                return missArg(arg, "<num>");
+            } else if (sscanf(val, "%d", &pArgs->tcpPort) != 1) {
+                return invArg(val);
+            }
         } else if (strcmp(arg, "--version") == 0) {
             fprintf(stdout, "Program version %s built on %s %s\n", PROGRAM_VERSION, __DATE__, __TIME__);
             exit(0);
@@ -134,6 +143,14 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
     }
 
     // Sanity check the args..
+
+    if (pArgs->startTime != 0) {
+        time_t now = time(NULL);
+        if (pArgs->startTime < now) {
+            return invArg("Ride start time is in the past");
+        }
+        printf("now=%ld startTime=%ld\n", now, pArgs->startTime);
+    }
 
     if ((pArgs->tcpPort < 49152) || (pArgs->tcpPort > 65535)) {
         return invArg("TCP port must be in the range 49152-65535");
@@ -164,8 +181,6 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Use --help for the list of supported options.\n\n");
         return -1;
     }
-
-
 
     // Start the main work loop...
     if (grsMain(&grs, &cmdArgs) != 0) {

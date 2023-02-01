@@ -10,6 +10,7 @@
 #include <netinet/tcp.h>
 
 #include "grs.h"
+#include "json.h"
 
 // Format a SockAddrStore object as the string: <ipAddr>[<portNum>]
 #define SSFMT_BUF_LEN   (INET6_ADDRSTRLEN+1+5+1)
@@ -196,15 +197,211 @@ static int procDisconnect(Grs *pGrs, const CmdArgs *pArgs, int fd)
     return 0;
 }
 
+static Gender genderFromTagVal(const char *tagVal)
+{
+    if (tagVal != NULL) {
+        if (strcmp(tagVal, "male") == 0) {
+            return male;
+        } else if (strcmp(tagVal, "female") == 0) {
+            return female;
+        }
+    }
+
+    return unspec;
+}
+
+static int ageFromTagVal(const char *tagVal)
+{
+    int age = 0;
+
+    if (tagVal != NULL) {
+        sscanf(tagVal, "%d", &age);
+    }
+
+    return age;
+}
+
+// Send a Registration Response message
+static int sendRegRespMsg(Grs *pGrs, const CmdArgs *pArgs, Rider *pRider)
+{
+    char msg[1024];
+    size_t msgLen;
+    ssize_t len;
+
+    snprintf(msg, sizeof (msg), "{\"type\":\"regResp\", \"status\":\"success\", \"bibNum\':\"%d\", \"startTime\":\"%ld\"}",
+            pRider->bibNum, pArgs->startTime);
+    msgLen = strlen(msg) + 1;
+
+    if ((len = send(pRider->sd, msg, msgLen, 0)) != msgLen) {
+        fprintf(stderr, "ERROR: failed to send data! fd=%d (%s)\n", pRider->sd, strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+// Send a GO! message to all the registered riders
+static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
+{
+    char msg[1024];
+    size_t msgLen;
+
+    snprintf(msg, sizeof (msg), "{\"type\":\"go\"}");
+    msgLen = strlen(msg) + 1;
+
+    for (Gender gender = unspec; gender < GenderMax; gender++) {
+        for (AgeGrp ageGrp = undef; ageGrp < AgeGrpMax; ageGrp++) {
+            Rider *pRider;
+
+            TAILQ_FOREACH(pRider, &pGrs->riderList[gender][ageGrp], tqEntry) {
+                if (pRider->state == registered) {
+                    ssize_t len;
+
+                    if ((len = send(pRider->sd, msg, msgLen, 0)) != msgLen) {
+                        fprintf(stderr, "ERROR: failed to send data! fd=%d (%s)\n", pRider->sd, strerror(errno));
+                        return -1;
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+// Process a Registration Request message
+static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pMsg)
+{
+    Rider *pRider;
+
+    // At this point the rider record should be in the
+    // general category and in the 'connected' state.
+    TAILQ_FOREACH(pRider, &pGrs->riderList[unspec][undef], tqEntry) {
+        if (pRider->sd == fd) {
+            if (pRider->state == connected) {
+                // Get all the tag values
+                char *ride = jsonGetTagValue(pMsg, "ride");
+                if (ride == NULL) {
+                    fprintf(stderr, "ERROR: no ride name specified! fd=%d\n", fd);
+                    return -1;
+                } else if (strcmp(ride, pArgs->rideName) != 0) {
+                    free(ride);
+                    fprintf(stderr, "ERROR: invalid ride name! fd=%d ride=%s\n", fd, ride);
+                    return -1;
+                }
+                pRider->name = jsonGetTagValue(pMsg, "name");
+                pRider->gender = genderFromTagVal(jsonGetTagValue(pMsg, "gender"));
+                pRider->age = ageFromTagVal(jsonGetTagValue(pMsg, "age"));
+
+                // Assign a bib number
+                pRider->bibNum = ++pGrs->numRegRiders;
+
+                // Send back the Registration Response message
+                if (sendRegRespMsg(pGrs, pArgs, pRider) != 0) {
+                    // Error message already printed
+                    return -1;
+                }
+
+                // This rider is now registered
+                pRider->state = registered;
+
+                // Don't need this anymore
+                free(ride);
+
+                // Done!
+                return 0;
+            } else {
+                fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%d\n", __func__, fd, pRider->state);
+                return -1;
+            }
+        }
+    }
+
+    return -1;
+}
+
+// Process a Progress Update message
+static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pMsg)
+{
+    Rider *pRider;
+
+    // Make sure the group ride has started
+    if (!pGrs->rideActive) {
+        fprintf(stderr, "ERROR: group ride is not active! fd=%d\n", fd);
+        return -1;
+    }
+
+    // At this point the rider record should be in the
+    // general category and in the 'registered' state.
+    TAILQ_FOREACH(pRider, &pGrs->riderList[unspec][undef], tqEntry) {
+        if (pRider->sd == fd) {
+            if (pRider->state == registered) {
+                // Get all the tag values
+                char *distance = jsonGetTagValue(pMsg, "distance");
+                if (distance == NULL) {
+                    fprintf(stderr, "ERROR: no distance specified! fd=%d\n", fd);
+                } else {
+                    sscanf(distance, "%d", &pRider->distance);
+                    free(distance);
+                }
+
+                printf("Received progUpd message: fd=%d distance=%d\n", fd, pRider->distance);
+
+                // Done!
+                return 0;
+            } else {
+                fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%d\n", __func__, fd, pRider->state);
+                return -1;
+            }
+        }
+    }
+
+    return -1;
+}
+
 static int procData(Grs *pGrs, const CmdArgs *pArgs, int fd)
 {
-    printf("Data available: fd=%d\n", fd);
+    char dataBuf[1000];
+    ssize_t dataLen;
+
+    //printf("Data available: fd=%d\n", fd);
+
+    // Read in all the available data
+    if ((dataLen = read(fd, dataBuf, sizeof (dataBuf))) > 0) {
+        JsonObject msg = {0};
+        if (jsonFindObject(dataBuf, dataLen, &msg) == 0) {
+            const char *msgType = jsonFindTag(&msg, "type");
+            if (msgType != NULL) {
+                if (strncmp(msgType, "\"regReq\"", 8) == 0) {
+                    procRegReqMsg(pGrs, pArgs, fd, &msg);
+                } else if (strncmp(msgType, "\"progUpd\"", 9) == 0) {
+                    procProgUpdMsg(pGrs, pArgs, fd, &msg);
+                } else {
+                    fprintf(stderr, "ERROR: unsupported message type! msgType=%s\n", msgType);
+                    jsonDumpObject(&msg);
+                    return -1;
+                }
+            } else {
+                fprintf(stderr, "ERROR: JSON message has no type!\n");
+                jsonDumpObject(&msg);
+                return -1;
+            }
+        } else {
+            fprintf(stderr, "ERROR: no JSON message found! fd=%d\n", fd);
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "ERROR: failed to read data! fd=%d (%s)\n", fd, strerror(errno));
+        return -1;
+    }
 
     return 0;
 }
 
 int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
 {
+    int s = 0;
+
     // First check for new connections
     if (pGrs->pollFds[0].revents & POLLIN) {
         if (procConnect(pGrs, pArgs) != 0) {
@@ -217,9 +414,9 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
     for (int n = 1; n < pGrs->numFds; n++) {
         int revents = pGrs->pollFds[n].revents;
         if (revents & (POLLRDHUP | POLLHUP)) {
-            procDisconnect(pGrs, pArgs, pGrs->pollFds[n].fd);
+            s = procDisconnect(pGrs, pArgs, pGrs->pollFds[n].fd);
         } else if (revents & POLLIN) {
-            procData(pGrs, pArgs, pGrs->pollFds[n].fd);
+            s = procData(pGrs, pArgs, pGrs->pollFds[n].fd);
         } else if (revents != 0) {
             fprintf(stderr, "ERROR: unknown event! fd=%d revents=%x\n",
                     pGrs->pollFds[n].fd, pGrs->pollFds[n].revents);
@@ -232,7 +429,7 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
         buildPollFds(pGrs);
     }
 
-    return 0;
+    return s;
 }
 
 int sendReportMsg(Grs *pGrs, const CmdArgs *pArgs)
@@ -260,16 +457,27 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
         return -1;
     }
 
+    // If no start time was specified, make the group ride
+    // active right away.
+    if (pArgs->startTime == 0) {
+        pGrs->rideActive = true;
+    }
+
     while (true) {
         int nFds;
-        Timespec now, deltaT;
+        Timespec start, end;
+        Timespec deltaT = {0};
+        Timespec timeout;
 
-        // Wait for an event on any of the file descriptors or
-        // until the report period expires...
-        if ((nFds = ppoll(pGrs->pollFds, pGrs->numFds, &reportPeriod, NULL)) < 0) {
+        // Wait for an event on any of the file descriptors we
+        // are monitoring, or until the report period expires.
+        tvSub(&timeout, &reportPeriod, &deltaT);
+        if ((nFds = ppoll(pGrs->pollFds, pGrs->numFds, &timeout, NULL)) < 0) {
             fprintf(stderr, "ERROR: failed to wait for file descriptor events! (%s)\n", strerror(errno));
             return -1;
         }
+
+        clock_gettime(CLOCK_REALTIME, &start);
 
         if (nFds > 0) {
             // Process the file descriptor events
@@ -279,16 +487,32 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
             }
         }
 
-        // Is it time to send the report messages?
-        clock_gettime(CLOCK_REALTIME, &now);
-        tvSub(&deltaT, &now, &pGrs->lastReport);
-        if (tvCmp(&deltaT, &reportPeriod) >= 0) {
-            // Send the report message to the clients
-            if (sendReportMsg(pGrs, pArgs) != 0) {
-                // Error message already printed
-                return -1;
+        if (pGrs->rideActive) {
+            // Time to send the report messages?
+            tvSub(&deltaT, &start, &pGrs->lastReport);
+            if (tvCmp(&deltaT, &reportPeriod) >= 0) {
+                // Send the report message to the clients
+                if (sendReportMsg(pGrs, pArgs) != 0) {
+                    // Error message already printed
+                    return -1;
+                }
+            }
+        } else {
+            // Time to start the ride?
+            time_t now = time(NULL);
+            if (now >= pArgs->startTime) {
+                // Ready-Set-Go!
+                if (sendGoMsg(pGrs, pArgs) != 0) {
+                    // Error message already printed
+                    return -1;
+                }
+
+                pGrs->rideActive = true;
             }
         }
+
+        clock_gettime(CLOCK_REALTIME, &end);
+        tvSub(&deltaT, &end, &start);
     }
 
     return 0;
