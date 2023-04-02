@@ -17,7 +17,8 @@ static const char *help =
         "SYNTAX:\n"
         "    grs [OPTIONS]\n"
         "\n"
-        "    Blah blah blah...\n"
+        "    GRS is a server app for coordinating virtual cycling group rides that\n"
+		"    can have 100's of participants.\n"
         "\n"
         "OPTIONS:\n"
         "    --help\n"
@@ -34,12 +35,14 @@ static const char *help =
         "        their update messages to the server.\n"
         "    --ride-name <name>\n"
         "        Specifies the name of the group ride.\n"
+		"    --shiz-file <url>\n"
+		"        Specifies the URL of the ride's SHIZ file.\n"
         "    --start-time <time>\n"
         "        Specifies the start date and time (in ISO 8601 UTC format) of\n"
-        "        the group ride.\n"
+        "        the group ride; e.g. 2023-04-01T17:00:00Z\n"
         "    --tcp-port <port>\n"
         "        Specifies the TCP port used by the GRS app. The default is TCP\n"
-        "        port 54321."
+        "        port 50000.\n"
         "    --version\n"
         "        Show program's version info and exit.\n"
         "\n";
@@ -53,6 +56,12 @@ static int invArg(const char *arg)
 static int missArg(const char *arg, const char *val)
 {
     fprintf(stderr, "Missing argument. Syntax: '%s %s'\n", arg, val);
+    return -1;
+}
+
+static int missOpt(const char *opt)
+{
+    fprintf(stderr, "Missing option: %s\n", opt);
     return -1;
 }
 
@@ -114,6 +123,13 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
             } else {
                 pArgs->rideName = strdup(val);
             }
+        } else if (strcmp(arg, "--shiz-file") == 0) {
+            val = argv[++n];
+            if (val == NULL) {
+                return missArg(arg, "<url>");
+            } else {
+                pArgs->shizFile = strdup(val);
+            }
         } else if (strcmp(arg, "--start-time") == 0) {
             val = argv[++n];
             if (val == NULL) {
@@ -142,14 +158,22 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
         }
     }
 
-    // Sanity check the args..
+    // Sanity check the args...
+
+    if (pArgs->rideName == NULL) {
+    	return missOpt("--ride-name <name>");
+    }
+
+    if (pArgs->shizFile == NULL) {
+    	return missOpt("--shiz-file <url>");
+    }
 
     if (pArgs->startTime != 0) {
         time_t now = time(NULL);
         if (pArgs->startTime < now) {
-            return invArg("Ride start time is in the past");
+            return invArg("Ride start time is in the past!");
         }
-        printf("now=%ld startTime=%ld\n", now, pArgs->startTime);
+        printf("now=%ld startTime=%ld diff=%ld\n", now, pArgs->startTime, (pArgs->startTime - now));
     }
 
     if ((pArgs->tcpPort < 49152) || (pArgs->tcpPort > 65535)) {

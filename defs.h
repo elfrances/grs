@@ -6,7 +6,7 @@
 #include <time.h>
 
 // Default TCP port for the listening socket
-#define DEF_TCP_PORT    54321
+#define DEF_TCP_PORT    50000
 
 // Handy type aliases
 typedef struct pollfd PollFd;
@@ -25,6 +25,7 @@ typedef struct CmdArgs {
     int maxRiders;              // Max number of riders that can join the group ride
     int reportPeriod;           // Period (in seconds) the client app needs to send its progress update messages
     char *rideName;             // the name of the group ride
+    char *shizFile;				// the URL of the ride's SHIZ file
     SockAddrStore sockAddr;     // IP address and TCP port (in network byte order) used by GRS to listen for client connections
     time_t startTime;           // Start date/time (in UTC) for the group ride
     int tcpPort;                // TCP port used by the listening socket
@@ -66,7 +67,6 @@ typedef enum RiderState {
 
 // Rider
 typedef struct Rider {
-    int age;                    // rider's age (as of Dec 31 of the current year)
     AgeGrp ageGrp;              // rider's age group
     int bibNum;                 // rider's bib number
     int distance;               // rider's current distance (in meters) so far
@@ -93,7 +93,6 @@ typedef struct Grs {
     TAILQ_HEAD(RiderList, Rider) riderList[GenderMax][AgeGrpMax];
 
     int sd;                     // file descriptor of the listening socket
-
 } Grs;
 
 #ifdef __cplusplus
