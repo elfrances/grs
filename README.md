@@ -79,7 +79,7 @@ INFO: rideName=RPI-TCR controlFile=http://grs.net/RPI-TCR.shiz videoFile=http://
 New connection: sd=4 addr=192.168.0.248[54974]
 INFO: Received regReq message: fd=4 name=Marcelo gender=2 age=61
 INFO: Ready... Set... Go!
-INFO: Received progUpd message: fd=4 name=Marcelo distance=0
+INFO: Received progUpd message: fd=4 name=Marcelo distance=0 power=0
 Sending report messages...
 ```
 
@@ -117,18 +117,29 @@ If everything is OK, the GRS sends back a "Registration Response" message to the
 
 "status" indicates whether or not the registration was accepted. "bibNum" is the bib number assigned to the rider. "startTime" is the UTC time at which the ride is scheduled to start. "controlFile" and "videoFile" are the URL's to the control and video files of the ride. "reportPeriod" is the time (in seconds) the VCA should send its Progress Update messages to the GRS.  The VCA can use the URL of the control and video files to download the files, or to validate that they match the local copy they may already have in their cache.
 
-If the registration is successful, the VCA just sits idle until the GRS sends the "Go" message to all the registered riders.  At that pont, the VCA starts sending periodic "Progress Update" message to the GRS, to indicate the rider's position in the course, and its current speed and power values.  The GRS collects all these data, and periodically sends a "Leaderboard" message to all registered riders in the same gender and age group leaderboard.  The message has the following format:
+If the registration is successful, the VCA just sits idle until the GRS sends the "Go" message to all the registered riders.  At that pont, the VCA starts sending periodic "Progress Update" message to the GRS, to indicate the rider's position in the course, and its current speed and power values. The message has the following format:
+
+```
+   {
+     "type": "progUpd",
+     "distance": "<DistanceInMeters>",
+     "power": "<PowerInWatts>",
+     "speed": "<SpeedInMetersPerSec>"
+   }
+```
+
+The GRS collects the data from the progUpd messages, and periodically sends a "Leaderboard" message to all registered riders in the same gender and age group.  Assuming there are N riders in the given gender and age group, the message would have the following format:
 
 ```
    {
      "type": "leaderboard",
      "riders": [
-       {"name": "<RidersName0>", "bibNum": <BibNum0>", "distance": "<DistanceInMeters0>", "power": "<PowerInWatts0>"},
-       {"name": "<RidersName1>", "bibNum": <BibNum1>", "distance": "<DistanceInMeters1>", "power": "<PowerInWatts1>"},
+       {"name": "<RidersName1>", "bibNum": <BibNum1>", "distance": "<DistanceInMeters1>", "power": "<PowerInWatts1>", "speed": "<SpeedInMetersPerSec1>"},
+       {"name": "<RidersName2>", "bibNum": <BibNum2>", "distance": "<DistanceInMeters2>", "power": "<PowerInWatts2>", "speed": "<SpeedInMetersPerSec2>"},
            .
            .
            .
-       {"name": "<RidersNameN>", "bibNum": <BibNumN>", "distance": "<DistanceInMetersN>", "power": "<PowerInWattsN>"},
+       {"name": "<RidersNameN>", "bibNum": <BibNumN>", "distance": "<DistanceInMetersN>", "power": "<PowerInWattsN>", "speed": "<SpeedInMetersPerSecN>"},
      ],
    }
 ```

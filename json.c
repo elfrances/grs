@@ -72,9 +72,20 @@ void jsonDumpObject(const JsonObject *pObj)
 }
 
 // Locate the specified tag within the given JSON object and
-// return a pointer to its value: e.g.
+// return a pointer to its value: e.g. given the following
+// JSON object:
 //
-//   { ..., <tag> : <value>, ... }
+//   { ..., "username" : "mmourier", ... }
+//
+// the call:
+//
+//   jsonFindTag(pObj, "username");
+//
+// would return a pointer to the following string:
+//
+//                        |
+//                        V
+//   { ..., "username" : "mmourier", ... }
 //
 const char *jsonFindTag(const JsonObject *pObj, const char *tag)
 {

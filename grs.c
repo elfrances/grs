@@ -436,7 +436,8 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
 //   {
 //     "type": "progUpd",
 //     "distance": "<DistanceInMeters>",
-//     "power": "<PowerInWatts>"
+//     "power": "<PowerInWatts>",
+//     "speed": "<SpeedInMetersPerSec>"
 //   }
 //
 // Example:
@@ -444,7 +445,8 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
 //   {
 //     "type": "progUpd",
 //     "distance": "1620",
-//     "power": "250"
+//     "power": "250",
+//     "speed": "9.722"
 //   }
 //
 static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pMsg)
@@ -462,15 +464,23 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
         if (pRider->state == registered) {
             // Get all the tag values
             char *distance = jsonGetTagValue(pMsg, "distance");
-            if (distance == NULL) {
-                fprintf(stderr, "ERROR: no distance specified! fd=%d\n", fd);
-            } else {
+            if (distance != NULL) {
                 sscanf(distance, "%d", &pRider->distance);
                 free(distance);
+            } else {
+                fprintf(stderr, "ERROR: no distance specified! fd=%d\n", fd);
             }
 
-            printf("INFO: Received progUpd message: fd=%d name=%s distance=%d\n",
-                    fd, pRider->name, pRider->distance);
+            char *power = jsonGetTagValue(pMsg, "power");
+            if (power != NULL) {
+                sscanf(power, "%d", &pRider->power);
+                free(power);
+            } else {
+                fprintf(stderr, "ERROR: no power specified! fd=%d\n", fd);
+            }
+
+            printf("INFO: Received progUpd message: fd=%d name=%s distance=%d power=%d\n",
+                    fd, pRider->name, pRider->distance, pRider->power);
 
             // Done!
             return 0;
