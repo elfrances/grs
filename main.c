@@ -7,7 +7,6 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-
 #include "defs.h"
 #include "grs.h"
 
@@ -18,9 +17,11 @@ static const char *help =
         "    grs [OPTIONS]\n"
         "\n"
         "    GRS is a server app for coordinating virtual cycling group rides that\n"
-		"    can have 100's of participants.\n"
+        "    can have 100's of participants.\n"
         "\n"
         "OPTIONS:\n"
+        "    --control-file <url>\n"
+        "        Specifies the URL of the ride's control file.\n"
         "    --help\n"
         "        Show this help and exit.\n"
         "    --ip-addr <addr>\n"
@@ -35,8 +36,6 @@ static const char *help =
         "        their update messages to the server.\n"
         "    --ride-name <name>\n"
         "        Specifies the name of the group ride.\n"
-		"    --shiz-file <url>\n"
-		"        Specifies the URL of the ride's SHIZ file.\n"
         "    --start-time <time>\n"
         "        Specifies the start date and time (in ISO 8601 UTC format) of\n"
         "        the group ride; e.g. 2023-04-01T17:00:00Z\n"
@@ -45,6 +44,8 @@ static const char *help =
         "        port 50000.\n"
         "    --version\n"
         "        Show program's version info and exit.\n"
+        "    --video-file <url>\n"
+        "        Specifies the URL of the ride's video file.\n"
         "\n";
 
 static int invArg(const char *arg)
@@ -80,7 +81,14 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
 
         arg = argv[n];
 
-        if (strcmp(arg, "--help") == 0) {
+        if (strcmp(arg, "--control-file") == 0) {
+            val = argv[++n];
+            if (val == NULL) {
+                return missArg(arg, "<url>");
+            } else {
+                pArgs->controlFile = strdup(val);
+            }
+        } else if (strcmp(arg, "--help") == 0) {
             fprintf(stdout, "%s\n", help);
             exit(0);
         } else if (strcmp(arg, "--ip-addr") == 0) {
@@ -91,11 +99,11 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
                 struct in_addr addrV4;
                 struct in6_addr addrV6;
                 if (inet_pton(AF_INET, val, &addrV4) == 1) {
-                    struct sockaddr_in *sockAddr = (struct sockaddr_in *) &pArgs->sockAddr;
+                    struct sockaddr_in *sockAddr = (struct sockaddr_in*) &pArgs->sockAddr;
                     sockAddr->sin_family = AF_INET;
                     sockAddr->sin_addr = addrV4;
                 } else if (inet_pton(AF_INET6, val, &addrV6) == 1) {
-                    struct sockaddr_in6 *sockAddr = (struct sockaddr_in6 *) &pArgs->sockAddr;
+                    struct sockaddr_in6 *sockAddr = (struct sockaddr_in6*) &pArgs->sockAddr;
                     sockAddr->sin6_family = AF_INET6;
                     sockAddr->sin6_addr = addrV6;
                 } else {
@@ -123,19 +131,12 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
             } else {
                 pArgs->rideName = strdup(val);
             }
-        } else if (strcmp(arg, "--shiz-file") == 0) {
-            val = argv[++n];
-            if (val == NULL) {
-                return missArg(arg, "<url>");
-            } else {
-                pArgs->shizFile = strdup(val);
-            }
         } else if (strcmp(arg, "--start-time") == 0) {
             val = argv[++n];
             if (val == NULL) {
                 return missArg(arg, "<date+time>");
             } else {
-                struct tm brkDwnTime = {0};
+                struct tm brkDwnTime = { 0 };
                 if (strptime(val, "%Y-%m-%dT%H:%M:%S", &brkDwnTime) != NULL) {
                     pArgs->startTime = mktime(&brkDwnTime);
                 } else {
@@ -152,6 +153,13 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
         } else if (strcmp(arg, "--version") == 0) {
             fprintf(stdout, "Program version %s built on %s %s\n", PROGRAM_VERSION, __DATE__, __TIME__);
             exit(0);
+        } else if (strcmp(arg, "--video-file") == 0) {
+            val = argv[++n];
+            if (val == NULL) {
+                return missArg(arg, "<url>");
+            } else {
+                pArgs->videoFile = strdup(val);
+            }
         } else {
             fprintf(stderr, "Invalid option: %s\n", arg);
             return -1;
@@ -160,12 +168,16 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
 
     // Sanity check the args...
 
-    if (pArgs->rideName == NULL) {
-    	return missOpt("--ride-name <name>");
+    if (pArgs->controlFile == NULL) {
+        return missOpt("--control-file <url>");
     }
 
-    if (pArgs->shizFile == NULL) {
-    	return missOpt("--shiz-file <url>");
+    if (pArgs->rideName == NULL) {
+        return missOpt("--ride-name <name>");
+    }
+
+    if (pArgs->videoFile == NULL) {
+        return missOpt("--video-file <url>");
     }
 
     if (pArgs->startTime != 0) {
@@ -173,7 +185,6 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
         if (pArgs->startTime < now) {
             return invArg("Ride start time is in the past!");
         }
-        printf("now=%ld startTime=%ld diff=%ld\n", now, pArgs->startTime, (pArgs->startTime - now));
     }
 
     if ((pArgs->tcpPort < 49152) || (pArgs->tcpPort > 65535)) {
@@ -187,18 +198,22 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
 
     // Set the TCP port in the socket address object
     if (pArgs->sockAddr.ss_family == AF_INET) {
-        ((struct sockaddr_in *) &pArgs->sockAddr)->sin_port = htons(pArgs->tcpPort);
+        ((struct sockaddr_in*) &pArgs->sockAddr)->sin_port = htons(pArgs->tcpPort);
     } else {
-        ((struct sockaddr_in6 *) &pArgs->sockAddr)->sin6_port = htons(pArgs->tcpPort);
+        ((struct sockaddr_in6*) &pArgs->sockAddr)->sin6_port = htons(pArgs->tcpPort);
     }
+
+    printf("INFO: rideName=%s controlFile=%s videoFile=%s startTime=%ld maxRiders=%d reportPeriod=%d\n",
+            pArgs->rideName, pArgs->controlFile, pArgs->videoFile,
+            pArgs->startTime, pArgs->maxRiders, pArgs->reportPeriod);
 
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
-    CmdArgs cmdArgs = {0};
-    Grs grs = {0};
+    CmdArgs cmdArgs = { 0 };
+    Grs grs = { 0 };
 
     // Parse the command-line arguments
     if (parseCmdArgs(argc, argv, &cmdArgs) != 0) {
@@ -214,6 +229,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-
 

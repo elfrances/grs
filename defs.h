@@ -22,20 +22,22 @@ typedef enum Bool {
 } Bool;
 
 typedef struct CmdArgs {
+    char *controlFile;          // the URL of the ride's control file
     int maxRiders;              // Max number of riders that can join the group ride
-    int reportPeriod;           // Period (in seconds) the client app needs to send its progress update messages
+    int reportPeriod;           // Period (in seconds) the client app needs to send its progUpd messages
     char *rideName;             // the name of the group ride
-    char *shizFile;				// the URL of the ride's SHIZ file
     SockAddrStore sockAddr;     // IP address and TCP port (in network byte order) used by GRS to listen for client connections
     time_t startTime;           // Start date/time (in UTC) for the group ride
     int tcpPort;                // TCP port used by the listening socket
+    char *videoFile;            // the URL of the ride's video file
 } CmdArgs;
 
 typedef enum Gender {
     unspec = 0,
     female = 1,
     male = 2,
-    GenderMax = 3
+    nonBinary = 3,
+    GenderMax = 4
 } Gender;
 
 typedef enum AgeGrp {
@@ -65,13 +67,15 @@ typedef enum RiderState {
     active = 3      // Active
 } RiderState;
 
-// Rider
+// Rider object
 typedef struct Rider {
+    int age;                    // rider's age
     AgeGrp ageGrp;              // rider's age group
     int bibNum;                 // rider's bib number
     int distance;               // rider's current distance (in meters) so far
     Gender gender;              // rider's gender
     char *name;                 // rider's name or alias
+    int power;                  // rider's current power (in watts)
     time_t regTime;             // time (UTC) the rider registered with the GRS
     int sd;                     // file descriptor of the connected socket
     SockAddrStore sockAddr;     // remote IP address and TCP port
@@ -80,7 +84,7 @@ typedef struct Rider {
     TAILQ_ENTRY(Rider) tqEntry; // node in the riderList
 } Rider;
 
-// Group Ride Server
+// Group Ride Server object
 typedef struct Grs {
     Timespec lastReport;        // time the last report was sent to the clients
     int numFds;                 // number of entries in the pollFds array

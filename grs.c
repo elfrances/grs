@@ -14,15 +14,15 @@
 #include "json.h"
 
 static const char *riderStateTble[] = {
-	    [unknown]		"unknown",
-	    [connected]		"connected",
-	    [registered]	"registered",
-	    [active]		"active"
+    [unknown]       "unknown",
+    [connected]     "connected",
+    [registered]    "registered",
+    [active]        "active"
 };
 
 // This table is used to look up a Rider record from
 // its associated socket file descriptor
-#define MAX_FD_VAL	(FD_SETSIZE + 1)
+#define MAX_FD_VAL    (FD_SETSIZE + 1)
 static Rider *fdMapTbl[MAX_FD_VAL];
 
 // Format a SockAddrStore object as the string: <ipAddr>[<portNum>]
@@ -73,11 +73,11 @@ static void buildPollFds(Grs *pGrs)
 
     // Now add an entry for each connected socket
     for (int fd = 0; fd < MAX_FD_VAL; fd++) {
-    	if (fdMapTbl[fd] != NULL) {
-			pGrs->pollFds[n].fd = fd;
-			pGrs->pollFds[n].events = (POLLIN | POLLRDHUP);
-			pGrs->pollFds[n++].revents = 0;
-    	}
+        if (fdMapTbl[fd] != NULL) {
+            pGrs->pollFds[n].fd = fd;
+            pGrs->pollFds[n].events = (POLLIN | POLLRDHUP);
+            pGrs->pollFds[n++].revents = 0;
+        }
     }
 
     pGrs->numFds = n;
@@ -182,26 +182,27 @@ static int procConnect(Grs *pGrs, const CmdArgs *pArgs)
 
 static int procDisconnect(Grs *pGrs, const CmdArgs *pArgs, int fd)
 {
-	Rider *pRider;
+    Rider *pRider;
 
     // Use the file descriptor to locate the Rider record
-	if ((pRider = fdMapTbl[fd]) != NULL) {
-		char fmtBuf[SSFMT_BUF_LEN];
-		printf("Disconnected: sd=%d addr=%s state=%s\n",
-				fd, ssFmt(&pRider->sockAddr, fmtBuf, sizeof (fmtBuf), true), riderStateTble[pRider->state]);
-		if ((pRider->state == registered) || (pRider->state == active)) {
-			// Remove rider from its gender/age list
-			TAILQ_REMOVE(&pGrs->riderList[pRider->gender][pRider->ageGrp], pRider, tqEntry);
-		}
-		fdMapTbl[fd] = NULL;
-		free(pRider);
-		close(fd);
+    if ((pRider = fdMapTbl[fd]) != NULL) {
+        char fmtBuf[SSFMT_BUF_LEN];
+        printf("Disconnected: sd=%d addr=%s state=%s name=%s\n",
+                fd, ssFmt(&pRider->sockAddr, fmtBuf, sizeof (fmtBuf), true),
+                riderStateTble[pRider->state], pRider->name);
+        if ((pRider->state == registered) || (pRider->state == active)) {
+            // Remove rider from its gender/age list
+            TAILQ_REMOVE(&pGrs->riderList[pRider->gender][pRider->ageGrp], pRider, tqEntry);
+        }
+        fdMapTbl[fd] = NULL;
+        free(pRider);
+        close(fd);
 
-		// Need to rebuild the pollFds array
-		pGrs->rebuildPollFds = true;
+        // Need to rebuild the pollFds array
+        pGrs->rebuildPollFds = true;
 
-		return 0;
-	}
+        return 0;
+    }
 
     return -1;
 }
@@ -213,65 +214,98 @@ static Gender genderFromTagVal(const char *tagVal)
             return male;
         } else if (strcmp(tagVal, "female") == 0) {
             return female;
+        } else if (strcmp(tagVal, "nonBinary") == 0) {
+            return nonBinary;
         }
     }
 
     return unspec;
 }
 
-static AgeGrp ageFromTagVal(const char *tagVal)
+static int ageFromTagVal(const char *tagVal)
 {
-	AgeGrp ageGrp = undef;
+    int age = 0;
 
     if (tagVal != NULL) {
-    	int age = 0;
-        if (sscanf(tagVal, "%d", &age) == 1) {
-        	if ((age > 0) && (age <= 18)) {
-        		ageGrp = u19;
-        	} else if ((age > 18) && (age <= 34)) {
-        		ageGrp = u35;
-        	} else if ((age > 34) && (age <= 39)) {
-        		ageGrp = u40;
-        	} else if ((age > 39) && (age <= 44)) {
-        		ageGrp = u45;
-        	} else if ((age > 44) && (age <= 49)) {
-        		ageGrp = u50;
-        	} else if ((age > 49) && (age <= 54)) {
-        		ageGrp = u55;
-        	} else if ((age > 54) && (age <= 59)) {
-        		ageGrp = u60;
-        	} else if ((age > 59) && (age <= 64)) {
-        		ageGrp = u65;
-        	} else if ((age > 64) && (age <= 69)) {
-        		ageGrp = u70;
-        	} else if ((age > 69) && (age <= 74)) {
-        		ageGrp = u75;
-        	} else if ((age > 74) && (age <= 79)) {
-        		ageGrp = u80;
-        	} else if ((age > 79) && (age <= 84)) {
-        		ageGrp = u85;
-        	} else if ((age > 84) && (age <= 89)) {
-        		ageGrp = u90;
-        	} else if ((age > 89) && (age <= 94)) {
-        		ageGrp = u95;
-        	} else if ((age > 94) && (age <= 99)) {
-        		ageGrp = u100;
-        	}
-        }
+        sscanf(tagVal, "%d", &age);
+    }
+
+    return age;
+}
+
+static AgeGrp ageToAgeGrp(int age)
+{
+    AgeGrp ageGrp = undef;
+
+    if ((age > 0) && (age <= 18)) {
+        ageGrp = u19;
+    } else if ((age > 18) && (age <= 34)) {
+        ageGrp = u35;
+    } else if ((age > 34) && (age <= 39)) {
+        ageGrp = u40;
+    } else if ((age > 39) && (age <= 44)) {
+        ageGrp = u45;
+    } else if ((age > 44) && (age <= 49)) {
+        ageGrp = u50;
+    } else if ((age > 49) && (age <= 54)) {
+        ageGrp = u55;
+    } else if ((age > 54) && (age <= 59)) {
+        ageGrp = u60;
+    } else if ((age > 59) && (age <= 64)) {
+        ageGrp = u65;
+    } else if ((age > 64) && (age <= 69)) {
+        ageGrp = u70;
+    } else if ((age > 69) && (age <= 74)) {
+        ageGrp = u75;
+    } else if ((age > 74) && (age <= 79)) {
+        ageGrp = u80;
+    } else if ((age > 79) && (age <= 84)) {
+        ageGrp = u85;
+    } else if ((age > 84) && (age <= 89)) {
+        ageGrp = u90;
+    } else if ((age > 89) && (age <= 94)) {
+        ageGrp = u95;
+    } else if ((age > 94) && (age <= 99)) {
+        ageGrp = u100;
     }
 
     return ageGrp;
 }
 
 // Send a Registration Response message
+//
+// Message format:
+//
+//   {
+//     "type": "regResp",
+//     "status": "{error|success}",
+//     "bibNum": "<BibNumber>",
+//     "startTime": "<StartTimeInUTC>",
+//     "controlFile": "<URL>",
+//     "videoFile": "<URL>",
+//     "reportPeriod": "<ReportPeriodInSec>"
+//   }
+//
+// Example:
+//
+//   {
+//     "type": "regResp",
+//     "status": "success",
+//     "bibNum": "123",
+//     "startTime": "1680469260",
+//     "controlFile": "http://grs.net/RPI-TCR.shiz",
+//     "videoFile": "http://grs.net/RPI-TCR.mp4",
+//     "reportPeriod": "2"
+//  }
+//
 static int sendRegRespMsg(Grs *pGrs, const CmdArgs *pArgs, Rider *pRider)
 {
     char msg[1024];
     size_t msgLen;
     ssize_t len;
 
-    snprintf(msg, sizeof (msg), "{\"type\":\"regResp\", \"status\":\"success\", \"bibNum\":\"%d\", \"startTime\":\"%ld\"}",
-            pRider->bibNum, pArgs->startTime);
+    snprintf(msg, sizeof (msg), "{\"type\": \"regResp\", \"status\": \"success\", \"bibNum\": \"%d\", \"startTime\": \"%ld\", \"controlFile\": \"%s\", \"videoFile\": \"%s\", \"reportPeriod\": \"%d\"}",
+            pRider->bibNum, pArgs->startTime, pArgs->controlFile, pArgs->videoFile, pArgs->reportPeriod);
     msgLen = strlen(msg) + 1;
 
     if ((len = send(pRider->sd, msg, msgLen, 0)) != msgLen) {
@@ -283,12 +317,17 @@ static int sendRegRespMsg(Grs *pGrs, const CmdArgs *pArgs, Rider *pRider)
 }
 
 // Send a GO! message to all the registered riders
+//
+// Message format:
+//
+//   {"type": "go"}
+//
 static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
 {
     char msg[1024];
     size_t msgLen;
 
-    snprintf(msg, sizeof (msg), "{\"type\":\"go\"}");
+    snprintf(msg, sizeof (msg), "{\"type\": \"go\"}");
     msgLen = strlen(msg) + 1;
 
     for (Gender gender = unspec; gender < GenderMax; gender++) {
@@ -312,60 +351,102 @@ static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
 }
 
 // Process a Registration Request message
+//
+// Message format:
+//
+//   {
+//     "type": "regReq",
+//     "name": "<RidersName>",
+//     "gender": "{female|male|nonBinary|unspec}",
+//     "age": "<RidersAge>",
+//     "ride": "<RideName>"
+//   }
+//
+// Example:
+//
+//   {
+//     "type": "regReq",
+//     "name": "Marcelo Mourier",
+//     "gender": "male",
+//     "age": "61",
+//     "ride": "Sarbachtal"
+//   }
+//
 static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pMsg)
 {
     Rider *pRider;
 
     // Use the file descriptor to locate the Rider record
-	if ((pRider = fdMapTbl[fd]) != NULL) {
-		if (pRider->state == connected) {
-			// Found it!
+    if ((pRider = fdMapTbl[fd]) != NULL) {
+        if (pRider->state == connected) {
+            // Found it!
 
-			// Get all the tag values
-			char *ride = jsonGetTagValue(pMsg, "ride");
-			if (ride == NULL) {
-				fprintf(stderr, "ERROR: no ride name specified! fd=%d\n", fd);
-				return -1;
-			} else if (strcmp(ride, pArgs->rideName) != 0) {
-				fprintf(stderr, "ERROR: invalid ride name! fd=%d ride=%s\n", fd, ride);
-				free(ride);
-				return -1;
-			}
-			pRider->name = jsonGetTagValue(pMsg, "name");
-			pRider->gender = genderFromTagVal(jsonGetTagValue(pMsg, "gender"));
-			pRider->ageGrp = ageFromTagVal(jsonGetTagValue(pMsg, "age"));
+            // Get all the tag values
+            char *ride = jsonGetTagValue(pMsg, "ride");
+            if (ride == NULL) {
+                fprintf(stderr, "ERROR: no ride name specified! fd=%d\n", fd);
+                return -1;
+            } else if (strcmp(ride, pArgs->rideName) != 0) {
+                fprintf(stderr, "ERROR: invalid ride name! fd=%d ride=%s\n", fd, ride);
+                free(ride);
+                return -1;
+            }
+            pRider->name = jsonGetTagValue(pMsg, "name");
+            pRider->gender = genderFromTagVal(jsonGetTagValue(pMsg, "gender"));
+            pRider->age = ageFromTagVal(jsonGetTagValue(pMsg, "age"));
+            pRider->ageGrp = ageToAgeGrp(pRider->age);
 
-			// Assign a bib number
-			pRider->bibNum = ++pGrs->numRegRiders;
+            // Assign a bib number
+            pRider->bibNum = ++pGrs->numRegRiders;
 
-			// Send back the Registration Response message
-			if (sendRegRespMsg(pGrs, pArgs, pRider) != 0) {
-				// Error message already printed
-				return -1;
-			}
+            // Send back the Registration Response message
+            if (sendRegRespMsg(pGrs, pArgs, pRider) != 0) {
+                // Error message already printed
+                return -1;
+            }
 
-			// This rider is now registered
-			pRider->state = registered;
+            // This rider is now registered
+            pRider->state = registered;
 
-			// Move the rider to the correct gender/age
-			// category.
-			TAILQ_INSERT_HEAD(&pGrs->riderList[pRider->gender][pRider->ageGrp], pRider, tqEntry);
+            // Move the rider to the correct gender/age
+            // category.
+            TAILQ_INSERT_HEAD(&pGrs->riderList[pRider->gender][pRider->ageGrp], pRider, tqEntry);
 
-			// Don't need this anymore
-			free(ride);
+            // Don't need this anymore
+            free(ride);
 
-			// Done!
-			return 0;
-		} else {
-			fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%s\n", __func__, fd, riderStateTble[pRider->state]);
-			return -1;
-		}
-	}
+            printf("INFO: Received regReq message: fd=%d name=%s gender=%d age=%d\n",
+                    fd, pRider->name, pRider->gender, pRider->age);
+
+            // Done!
+            return 0;
+        } else {
+            fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%s\n", __func__, fd, riderStateTble[pRider->state]);
+            return -1;
+        }
+    }
 
     return -1;
 }
 
 // Process a Progress Update message
+//
+// Message format:
+//
+//   {
+//     "type": "progUpd",
+//     "distance": "<DistanceInMeters>",
+//     "power": "<PowerInWatts>"
+//   }
+//
+// Example:
+//
+//   {
+//     "type": "progUpd",
+//     "distance": "1620",
+//     "power": "250"
+//   }
+//
 static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pMsg)
 {
     Rider *pRider;
@@ -377,25 +458,26 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
     }
 
     // Use the file descriptor to locate the Rider record
-	if ((pRider = fdMapTbl[fd]) != NULL) {
-		if (pRider->state == registered) {
-			// Get all the tag values
-			char *distance = jsonGetTagValue(pMsg, "distance");
-			if (distance == NULL) {
-				fprintf(stderr, "ERROR: no distance specified! fd=%d\n", fd);
-			} else {
-				sscanf(distance, "%d", &pRider->distance);
-				free(distance);
-			}
+    if ((pRider = fdMapTbl[fd]) != NULL) {
+        if (pRider->state == registered) {
+            // Get all the tag values
+            char *distance = jsonGetTagValue(pMsg, "distance");
+            if (distance == NULL) {
+                fprintf(stderr, "ERROR: no distance specified! fd=%d\n", fd);
+            } else {
+                sscanf(distance, "%d", &pRider->distance);
+                free(distance);
+            }
 
-			printf("Received progUpd message: fd=%d distance=%d\n", fd, pRider->distance);
+            printf("INFO: Received progUpd message: fd=%d name=%s distance=%d\n",
+                    fd, pRider->name, pRider->distance);
 
-			// Done!
-			return 0;
-		} else {
-			fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%s\n", __func__, fd, riderStateTble[pRider->state]);
-			return -1;
-		}
+            // Done!
+            return 0;
+        } else {
+            fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%s\n", __func__, fd, riderStateTble[pRider->state]);
+            return -1;
+        }
     }
 
     return -1;
@@ -468,13 +550,40 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
 
     if (pGrs->rebuildPollFds) {
         // Rebuild the pollFds array to add new connections
-    	// and remove stale connections...
+        // and remove stale connections...
         buildPollFds(pGrs);
     }
 
     return s;
 }
 
+// Send a Leaderboard message
+//
+// Message format:
+//
+//   {
+//     "type": "leaderboard",
+//     "riders": [
+//       {"name": "<RidersName0>", "bibNum": <BibNum0>", "distance": "<DistanceInMeters0>", "power": "<PowerInWatts0>"},
+//       {"name": "<RidersName1>", "bibNum": <BibNum1>", "distance": "<DistanceInMeters1>", "power": "<PowerInWatts1>"},
+//           .
+//           .
+//           .
+//       {"name": "<RidersNameN>", "bibNum": <BibNumN>", "distance": "<DistanceInMetersN>", "power": "<PowerInWattsN>"},
+//     ],
+//   }
+//
+// Example:
+//
+//   {
+//     "type": "leaderboard",
+//     "riders": [
+//       {"name": "Marcelo Mourier", "bibNum": 123", "distance": "1620", "power": "200"},
+//       {"name": "Patrick Fulghum", "bibNum": 124", "distance": "1840", "power": "250"},
+//     ],
+//   }
+//  }
+//
 int sendReportMsg(Grs *pGrs, const CmdArgs *pArgs)
 {
     printf("Sending report messages...\n");
@@ -552,6 +661,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
             time_t now = time(NULL);
             if (now >= pArgs->startTime) {
                 // Ready-Set-Go!
+                printf("INFO: Ready... Set... Go!\n");
                 if (sendGoMsg(pGrs, pArgs) != 0) {
                     // Error message already printed
                     return -1;
