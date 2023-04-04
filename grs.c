@@ -12,6 +12,7 @@
 
 #include "grs.h"
 #include "json.h"
+#include "log.h"
 
 static const char *riderStateTble[] = {
     [unknown]       "unknown",
@@ -82,16 +83,6 @@ static void buildPollFds(Grs *pGrs)
 
     pGrs->numFds = n;
 
-#if 0
-    {
-        printf("%s: ", __func__);
-        for (n = 0; n < pGrs->numFds; n++) {
-            printf("%d:{fd=%d evt=%x revt=%x} ", n, pGrs->pollFds[n].fd, pGrs->pollFds[n].events, pGrs->pollFds[n].revents);
-        }
-        printf("\n");
-    }
-#endif
-
     // Done!
     pGrs->rebuildPollFds = false;
 }
@@ -102,28 +93,28 @@ static int configGrsSock(Grs *pGrs, const CmdArgs *pArgs)
 
     // Open the listening TCP socket
     if ((pGrs->sd = socket(pArgs->sockAddr.ss_family, SOCK_STREAM, 0)) < 0) {
-        fprintf(stderr, "ERROR: failed to open TCP socket! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to open TCP socket! (%s)\n", strerror(errno));
         return -1;
     }
 
     // Set REUSEADDR option on the listening socket to
     // allow the server to restart quickly.
     if (setsockopt(pGrs->sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof (enable)) != 0) {
-        fprintf(stderr, "ERROR: failed to set SO_REUSEADDR option! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to set SO_REUSEADDR option! (%s)\n", strerror(errno));
         close(pGrs->sd);
         return -1;
     }
 
     // Bind it to the specified address and port
     if (bind(pGrs->sd, (SockAddr *) &pArgs->sockAddr, ssLen(&pArgs->sockAddr)) != 0) {
-        fprintf(stderr, "ERROR: failed to bind TCP socket! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to bind TCP socket! (%s)\n", strerror(errno));
         close(pGrs->sd);
         return -1;
     }
 
     // Start listening for client connections
     if (listen(pGrs->sd, 10) != 0) {
-        fprintf(stderr, "ERROR: failed to listen on TCP socket! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to listen on TCP socket! (%s)\n", strerror(errno));
         close(pGrs->sd);
         return -1;
     }
@@ -144,24 +135,24 @@ static int procConnect(Grs *pGrs, const CmdArgs *pArgs)
 
     // Accept the new connection
     if ((sd = accept(pGrs->pollFds[0].fd, (SockAddr *) &sockAddr, &addrLen)) < 0) {
-        fprintf(stderr, "ERROR: failed to accept new connection! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to accept new connection! (%s)\n", strerror(errno));
         return -1;
     }
 
     // Disable Nagel's algo
     if (setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, &noDelay, sizeof (noDelay)) != 0) {
-        fprintf(stderr, "ERROR: failed to set TCP_NODELAY option! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to set TCP_NODELAY option! (%s)\n", strerror(errno));
         close(sd);
         return -1;
     }
 
     {
         char fmtBuf[SSFMT_BUF_LEN];
-        printf("New connection: sd=%d addr=%s\n", sd, ssFmt(&sockAddr, fmtBuf, sizeof (fmtBuf), true));
+        MSGLOG(INFO, "New connection: sd=%d addr=%s\n", sd, ssFmt(&sockAddr, fmtBuf, sizeof (fmtBuf), true));
     }
 
     if ((pRider = calloc(1, sizeof (Rider))) == NULL) {
-        fprintf(stderr, "ERROR: failed to alloc Rider object! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to alloc Rider object! (%s)\n", strerror(errno));
         close(sd);
         return -1;
     }
@@ -187,7 +178,7 @@ static int procDisconnect(Grs *pGrs, const CmdArgs *pArgs, int fd)
     // Use the file descriptor to locate the Rider record
     if ((pRider = fdMapTbl[fd]) != NULL) {
         char fmtBuf[SSFMT_BUF_LEN];
-        printf("Disconnected: sd=%d addr=%s state=%s name=%s\n",
+        MSGLOG(INFO, "Disconnected: sd=%d addr=%s state=%s name=%s\n",
                 fd, ssFmt(&pRider->sockAddr, fmtBuf, sizeof (fmtBuf), true),
                 riderStateTble[pRider->state], pRider->name);
         if ((pRider->state == registered) || (pRider->state == active)) {
@@ -277,7 +268,7 @@ static AgeGrp ageToAgeGrp(int age)
 // Message format:
 //
 //   {
-//     "type": "regResp",
+//     "msgType": "regResp",
 //     "status": "{error|success}",
 //     "bibNum": "<BibNumber>",
 //     "startTime": "<StartTimeInUTC>",
@@ -289,7 +280,7 @@ static AgeGrp ageToAgeGrp(int age)
 // Example:
 //
 //   {
-//     "type": "regResp",
+//     "msgType": "regResp",
 //     "status": "success",
 //     "bibNum": "123",
 //     "startTime": "1680469260",
@@ -304,12 +295,12 @@ static int sendRegRespMsg(Grs *pGrs, const CmdArgs *pArgs, Rider *pRider)
     size_t msgLen;
     ssize_t len;
 
-    snprintf(msg, sizeof (msg), "{\"type\": \"regResp\", \"status\": \"success\", \"bibNum\": \"%d\", \"startTime\": \"%ld\", \"controlFile\": \"%s\", \"videoFile\": \"%s\", \"reportPeriod\": \"%d\"}",
+    snprintf(msg, sizeof (msg), "{\"msgType\": \"regResp\", \"status\": \"success\", \"bibNum\": \"%d\", \"startTime\": \"%ld\", \"controlFile\": \"%s\", \"videoFile\": \"%s\", \"reportPeriod\": \"%d\"}",
             pRider->bibNum, pArgs->startTime, pArgs->controlFile, pArgs->videoFile, pArgs->reportPeriod);
     msgLen = strlen(msg) + 1;
 
     if ((len = send(pRider->sd, msg, msgLen, 0)) != msgLen) {
-        fprintf(stderr, "ERROR: failed to send data! fd=%d (%s)\n", pRider->sd, strerror(errno));
+        MSGLOG(ERROR, "Failed to send data! fd=%d (%s)\n", pRider->sd, strerror(errno));
         return -1;
     }
 
@@ -327,7 +318,7 @@ static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
     char msg[1024];
     size_t msgLen;
 
-    snprintf(msg, sizeof (msg), "{\"type\": \"go\"}");
+    snprintf(msg, sizeof (msg), "{\"msgType\": \"go\"}");
     msgLen = strlen(msg) + 1;
 
     for (Gender gender = unspec; gender < GenderMax; gender++) {
@@ -339,7 +330,7 @@ static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
                     ssize_t len;
 
                     if ((len = send(pRider->sd, msg, msgLen, 0)) != msgLen) {
-                        fprintf(stderr, "ERROR: failed to send data! fd=%d (%s)\n", pRider->sd, strerror(errno));
+                        MSGLOG(ERROR, "Failed to send data! fd=%d (%s)\n", pRider->sd, strerror(errno));
                         return -1;
                     }
                 }
@@ -355,7 +346,7 @@ static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
 // Message format:
 //
 //   {
-//     "type": "regReq",
+//     "msgType": "regReq",
 //     "name": "<RidersName>",
 //     "gender": "{female|male|nonBinary|unspec}",
 //     "age": "<RidersAge>",
@@ -365,7 +356,7 @@ static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
 // Example:
 //
 //   {
-//     "type": "regReq",
+//     "msgType": "regReq",
 //     "name": "Marcelo Mourier",
 //     "gender": "male",
 //     "age": "61",
@@ -384,10 +375,10 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
             // Get all the tag values
             char *ride = jsonGetTagValue(pMsg, "ride");
             if (ride == NULL) {
-                fprintf(stderr, "ERROR: no ride name specified! fd=%d\n", fd);
+                MSGLOG(ERROR, "No ride name specified! fd=%d\n", fd);
                 return -1;
             } else if (strcmp(ride, pArgs->rideName) != 0) {
-                fprintf(stderr, "ERROR: invalid ride name! fd=%d ride=%s\n", fd, ride);
+                MSGLOG(ERROR, "Invalid ride name! fd=%d ride=%s\n", fd, ride);
                 free(ride);
                 return -1;
             }
@@ -415,13 +406,13 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
             // Don't need this anymore
             free(ride);
 
-            printf("INFO: Received regReq message: fd=%d name=%s gender=%d age=%d\n",
+            MSGLOG(INFO, "Received regReq message: fd=%d name=%s gender=%d age=%d\n",
                     fd, pRider->name, pRider->gender, pRider->age);
 
             // Done!
             return 0;
         } else {
-            fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%s\n", __func__, fd, riderStateTble[pRider->state]);
+            MSGLOG(ERROR, "Invalid state! fd=%d state=%s\n", fd, riderStateTble[pRider->state]);
             return -1;
         }
     }
@@ -434,7 +425,7 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
 // Message format:
 //
 //   {
-//     "type": "progUpd",
+//     "msgType": "progUpd",
 //     "distance": "<DistanceInMeters>",
 //     "power": "<PowerInWatts>",
 //     "speed": "<SpeedInMetersPerSec>"
@@ -443,7 +434,7 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
 // Example:
 //
 //   {
-//     "type": "progUpd",
+//     "msgType": "progUpd",
 //     "distance": "1620",
 //     "power": "250",
 //     "speed": "9.722"
@@ -455,7 +446,7 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
 
     // Make sure the group ride has started
     if (!pGrs->rideActive) {
-        fprintf(stderr, "ERROR: group ride is not active! fd=%d\n", fd);
+        MSGLOG(ERROR, "Group ride is not active! fd=%d\n", fd);
         return -1;
     }
 
@@ -468,7 +459,7 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
                 sscanf(distance, "%d", &pRider->distance);
                 free(distance);
             } else {
-                fprintf(stderr, "ERROR: no distance specified! fd=%d\n", fd);
+                MSGLOG(ERROR, "No distance specified! fd=%d\n", fd);
             }
 
             char *power = jsonGetTagValue(pMsg, "power");
@@ -476,16 +467,16 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
                 sscanf(power, "%d", &pRider->power);
                 free(power);
             } else {
-                fprintf(stderr, "ERROR: no power specified! fd=%d\n", fd);
+                MSGLOG(ERROR, "No power specified! fd=%d\n", fd);
             }
 
-            printf("INFO: Received progUpd message: fd=%d name=%s distance=%d power=%d\n",
+            MSGLOG(INFO, "Received progUpd message: fd=%d name=%s distance=%d power=%d\n",
                     fd, pRider->name, pRider->distance, pRider->power);
 
             // Done!
             return 0;
         } else {
-            fprintf(stderr, "ERROR: %s: invalid state! fd=%d state=%s\n", __func__, fd, riderStateTble[pRider->state]);
+            MSGLOG(ERROR, "Invalid state! fd=%d state=%s\n", fd, riderStateTble[pRider->state]);
             return -1;
         }
     }
@@ -504,28 +495,28 @@ static int procData(Grs *pGrs, const CmdArgs *pArgs, int fd)
     if ((dataLen = read(fd, dataBuf, sizeof (dataBuf))) > 0) {
         JsonObject msg = {0};
         if (jsonFindObject(dataBuf, dataLen, &msg) == 0) {
-            const char *msgType = jsonFindTag(&msg, "type");
+            const char *msgType = jsonFindTag(&msg, "msgType");
             if (msgType != NULL) {
                 if (strncmp(msgType, "\"regReq\"", 8) == 0) {
                     procRegReqMsg(pGrs, pArgs, fd, &msg);
                 } else if (strncmp(msgType, "\"progUpd\"", 9) == 0) {
                     procProgUpdMsg(pGrs, pArgs, fd, &msg);
                 } else {
-                    fprintf(stderr, "ERROR: unsupported message type! msgType=%s\n", msgType);
+                    MSGLOG(ERROR, "Unsupported message type! msgType=%s\n", msgType);
                     jsonDumpObject(&msg);
                     return -1;
                 }
             } else {
-                fprintf(stderr, "ERROR: JSON message has no type!\n");
+                MSGLOG(ERROR, "JSON message has no type!\n");
                 jsonDumpObject(&msg);
                 return -1;
             }
         } else {
-            fprintf(stderr, "ERROR: no JSON message found! fd=%d\n", fd);
+            MSGLOG(ERROR, "No JSON message found! fd=%d\n", fd);
             return -1;
         }
     } else {
-        fprintf(stderr, "ERROR: failed to read data! fd=%d (%s)\n", fd, strerror(errno));
+        MSGLOG(ERROR, "Failed to read data! fd=%d (%s)\n", fd, strerror(errno));
         return -1;
     }
 
@@ -539,7 +530,7 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
     // First check for new connections
     if (pGrs->pollFds[0].revents & POLLIN) {
         if (procConnect(pGrs, pArgs) != 0) {
-            fprintf(stderr, "ERROR: failed to create new connection!\n");
+            MSGLOG(ERROR, "Failed to create new connection!\n");
             return -1;
         }
     }
@@ -552,7 +543,7 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
         } else if (revents & POLLIN) {
             s = procData(pGrs, pArgs, pGrs->pollFds[n].fd);
         } else if (revents != 0) {
-            fprintf(stderr, "ERROR: unknown event! fd=%d revents=%x\n",
+            MSGLOG(ERROR, "Unknown event! fd=%d revents=%x\n",
                     pGrs->pollFds[n].fd, pGrs->pollFds[n].revents);
             return -1;
         }
@@ -572,8 +563,8 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
 // Message format:
 //
 //   {
-//     "type": "leaderboard",
-//     "riders": [
+//     "msgType": "leaderboard",
+//     "riderList": [
 //       {"name": "<RidersName0>", "bibNum": <BibNum0>", "distance": "<DistanceInMeters0>", "power": "<PowerInWatts0>"},
 //       {"name": "<RidersName1>", "bibNum": <BibNum1>", "distance": "<DistanceInMeters1>", "power": "<PowerInWatts1>"},
 //           .
@@ -586,17 +577,21 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
 // Example:
 //
 //   {
-//     "type": "leaderboard",
-//     "riders": [
+//     "msgType": "leaderboard",
+//     "riderList": [
 //       {"name": "Marcelo Mourier", "bibNum": 123", "distance": "1620", "power": "200"},
 //       {"name": "Patrick Fulghum", "bibNum": 124", "distance": "1840", "power": "250"},
+//           .
+//           .
+//           .
+//       {"name": "Rick Norton", "bibNum": 132", "distance": "1850", "power": "250"},
 //     ],
 //   }
 //  }
 //
 int sendReportMsg(Grs *pGrs, const CmdArgs *pArgs)
 {
-    printf("Sending report messages...\n");
+    MSGLOG(INFO, "Sending report messages...\n");
     clock_gettime(CLOCK_REALTIME, &pGrs->lastReport);
 
     return 0;
@@ -616,7 +611,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
     // Allocate space for the list of file descriptors
     // to be monitored by poll()
     if ((pGrs->pollFds = calloc(pArgs->maxRiders, sizeof (PollFd))) == NULL) {
-        fprintf(stderr, "ERROR: failed to alloc pollFds array! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to alloc pollFds array! (%s)\n", strerror(errno));
         return -1;
     }
 
@@ -642,7 +637,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
         // are monitoring, or until the report period expires.
         tvSub(&timeout, &reportPeriod, &deltaT);
         if ((nFds = ppoll(pGrs->pollFds, pGrs->numFds, &timeout, NULL)) < 0) {
-            fprintf(stderr, "ERROR: failed to wait for file descriptor events! (%s)\n", strerror(errno));
+            MSGLOG(ERROR, "Failed to wait for file descriptor events! (%s)\n", strerror(errno));
             return -1;
         }
 
@@ -671,7 +666,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
             time_t now = time(NULL);
             if (now >= pArgs->startTime) {
                 // Ready-Set-Go!
-                printf("INFO: Ready... Set... Go!\n");
+                MSGLOG(INFO, "Ready... Set... Go!\n");
                 if (sendGoMsg(pGrs, pArgs) != 0) {
                     // Error message already printed
                     return -1;

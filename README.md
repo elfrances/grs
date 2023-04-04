@@ -91,7 +91,7 @@ When a user wants to join a group ride, they configure their VCA with the requir
 
 ```
    {
-     "type": "regReq",
+     "msgType": "regReq",
      "name": "<RidersName>",
      "gender": "{female|male|nonBinary}",
      "age": "<RidersAge>",
@@ -105,7 +105,7 @@ If everything is OK, the GRS sends back a "Registration Response" message to the
 
 ```
    {
-     "type": "regResp",
+     "msgType": "regResp",
      "status": "{error|success}",
      "bibNum": "<BibNumber>",
      "startTime": "<StartTimeInUTC>",
@@ -121,7 +121,7 @@ If the registration is successful, the VCA just sits idle until the GRS sends th
 
 ```
    {
-     "type": "progUpd",
+     "msgType": "progUpd",
      "distance": "<DistanceInMeters>",
      "power": "<PowerInWatts>",
      "speed": "<SpeedInMetersPerSec>"
@@ -132,8 +132,8 @@ The GRS collects the data from the progUpd messages, and periodically sends a "L
 
 ```
    {
-     "type": "leaderboard",
-     "riders": [
+     "msgType": "leaderboard",
+     "riderList": [
        {"name": "<RidersName1>", "bibNum": <BibNum1>", "distance": "<DistanceInMeters1>", "power": "<PowerInWatts1>", "speed": "<SpeedInMetersPerSec1>"},
        {"name": "<RidersName2>", "bibNum": <BibNum2>", "distance": "<DistanceInMeters2>", "power": "<PowerInWatts2>", "speed": "<SpeedInMetersPerSec2>"},
            .

@@ -9,6 +9,7 @@
 
 #include "defs.h"
 #include "grs.h"
+#include "log.h"
 
 #define PROGRAM_VERSION     "0.0"
 
@@ -183,7 +184,11 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
     if (pArgs->startTime != 0) {
         time_t now = time(NULL);
         if (pArgs->startTime < now) {
-            return invArg("Ride start time is in the past!");
+            time_t diff = now - pArgs->startTime;
+            char msg[128];
+            struct tm tm;
+            strftime(msg, sizeof (msg), "Ride start time is %H:%M:%S in the past!", localtime_r(&diff, &tm));
+            return invArg(msg);
         }
     }
 
@@ -203,9 +208,14 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
         ((struct sockaddr_in6*) &pArgs->sockAddr)->sin6_port = htons(pArgs->tcpPort);
     }
 
-    printf("INFO: rideName=%s controlFile=%s videoFile=%s startTime=%ld maxRiders=%d reportPeriod=%d\n",
-            pArgs->rideName, pArgs->controlFile, pArgs->videoFile,
-            pArgs->startTime, pArgs->maxRiders, pArgs->reportPeriod);
+    {
+        char startTime[128];
+        struct tm tm;
+        strftime(startTime, sizeof (startTime), "%Y-%m-%dT%H:%M:%S", localtime_r(&pArgs->startTime, &tm));
+        MSGLOG(INFO, "rideName=%s controlFile=%s videoFile=%s startTime=%s maxRiders=%d reportPeriod=%d",
+                pArgs->rideName, pArgs->controlFile, pArgs->videoFile,
+                startTime, pArgs->maxRiders, pArgs->reportPeriod);
+    }
 
     return 0;
 }
@@ -223,7 +233,7 @@ int main(int argc, char *argv[])
 
     // Start the main work loop...
     if (grsMain(&grs, &cmdArgs) != 0) {
-        fprintf(stderr, "Something went wrong. BYE!\n");
+        MSGLOG(FATAL, "Something went wrong. BYE!");
         return -1;
     }
 
