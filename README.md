@@ -71,16 +71,31 @@ $ sudo firewall-cmd --reload
 
 # Example
 
-In the following example we schedule the group ride "RPI-TCR" to start at 2023-04-02 17:54:00 UTC, and instruct the server to listen for connections on its IP address 192.168.0.249 and port 5000: 
+In the following example we schedule the group ride "RPI-TCR" to start at 2023-04-04 10:06:00 UTC, and instruct the server to listen for connections on its IP address 192.168.0.249 and port 5000, and to use the default 1 second report period and 100 rider limit: 
 
 ```
-$ grs --ip-addr 192.168.0.249 --tcp-port 50000 --ride-name RPI-TCR --control-file http://grs.net/RPI-TCR.shiz --video-file  http://grs.net/RPI-TCR.mp4 --start-time 2023-04-02T17:54:00Z
-INFO: rideName=RPI-TCR controlFile=http://grs.net/RPI-TCR.shiz videoFile=http://grs.net/RPI-TCR.mp4 startTime=1680483240 maxRiders=100 reportPeriod=1
-New connection: sd=4 addr=192.168.0.248[54974]
-INFO: Received regReq message: fd=4 name=Marcelo gender=2 age=61
-INFO: Ready... Set... Go!
-INFO: Received progUpd message: fd=4 name=Marcelo distance=0 power=0
-Sending report messages...
+$ grs --ip-addr 192.168.0.249 --tcp-port 50000 --ride-name RPI-TCR --control-file http://grs.net/RPI-TCR.shiz --video-file  http://grs.net/RPI-TCR.mp4 --start-time 2023-04-04T10:06:00Z
+2023-04-04T11:04:28:INFO:parseCmdArgs: rideName=RPI-TCR controlFile=http://grs.net/RPI-TCR.shiz videoFile=http://grs.net/RPI-TCR.mp4 startTime=2023-04-04T11:06:00 maxRiders=100 reportPeriod=1
+2023-04-04T11:04:35:INFO:procConnect: New connection: sd=4 addr=208.184.70.254[14027]
+2023-04-04T11:04:35:INFO:procRegReqMsg: Received regReq message: fd=4 name="John" gender=male age=30
+2023-04-04T11:04:37:INFO:procConnect: New connection: sd=5 addr=208.184.70.254[34055]
+2023-04-04T11:04:37:INFO:procRegReqMsg: Received regReq message: fd=5 name="Peter" gender=male age=31
+2023-04-04T11:04:38:INFO:procConnect: New connection: sd=6 addr=208.184.70.254[40528]
+2023-04-04T11:04:38:INFO:procRegReqMsg: Received regReq message: fd=6 name="Mary" gender=female age=25
+2023-04-04T11:04:39:INFO:procConnect: New connection: sd=7 addr=208.184.70.254[23576]
+2023-04-04T11:04:39:INFO:procRegReqMsg: Received regReq message: fd=7 name="Suzie" gender=female age=26
+2023-04-04T11:06:00:INFO:grsMain: Ready... Set... Go!
+2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=7 name="Suzie" distance=0 power=0
+2023-04-04T11:06:00:INFO:sendReportMsg: Sending report messages...
+2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=6 name="Mary" distance=0 power=0
+2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=4 name="John" distance=0 power=0
+2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=5 name="Peter" distance=0 power=0
+2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=7 name="Suzie" distance=1 power=1
+2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=6 name="Mary" distance=1 power=1
+2023-04-04T11:06:01:INFO:sendReportMsg: Sending report messages...
+2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=4 name="John" distance=1 power=1
+2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=5 name="Peter" distance=1 power=1
+
 ```
 
 # JSON Messages
@@ -128,7 +143,7 @@ If the registration is successful, the VCA just sits idle until the GRS sends th
    }
 ```
 
-The GRS collects the data from the progUpd messages, and periodically sends a "Leaderboard" message to all registered riders in the same gender and age group.  Assuming there are N riders in the given gender and age group, the message would have the following format:
+The GRS collects the data from the "Progress Update" messages sent by each of the VCA's, and periodically sends a "Leaderboard" message to all registered riders in the same gender and age group.  Assuming there are N riders in the given gender and age group, the "Leaderboard" message would have the following format:
 
 ```
    {
@@ -144,7 +159,7 @@ The GRS collects the data from the progUpd messages, and periodically sends a "L
    }
 ```
 
-The VCA can use this information to position each of the riders on a route overlay.
+The VCA can then use this information to position each of the riders on a course overlay shown on the screen, allowing the rider to get a visual idea of his/her own position with respect to the other riders.
 
 
  
