@@ -14,6 +14,8 @@ typedef enum LogLevel {
 extern "C" {
 #endif
 
+void setLogLevel(LogLevel level);
+
 void msgLog(LogLevel level, const char *function, const char *fmt, ...)  __attribute__ ((__format__ (__printf__, 3, 4)));
 
 #ifdef __cplusplus

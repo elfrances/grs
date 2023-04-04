@@ -13,6 +13,13 @@ static const char *logLevelTbl[] = {
         [FATAL] "FATAL,"
 };
 
+static LogLevel logLevel = NONE;
+
+void setLogLevel(LogLevel level)
+{
+    logLevel = level;
+}
+
 void msgLog(LogLevel level, const char *function, const char *fmt, ...)
 {
     time_t now = time(NULL);

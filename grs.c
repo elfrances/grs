@@ -14,11 +14,18 @@
 #include "json.h"
 #include "log.h"
 
-static const char *riderStateTble[] = {
+static const char *riderStateTbl[] = {
     [unknown]       "unknown",
     [connected]     "connected",
     [registered]    "registered",
     [active]        "active"
+};
+
+static const char *genderTbl[] = {
+    [unspec]        "unspec",
+    [female]        "female",
+    [male]          "male",
+    [nonBinary]     "nonBinary",
 };
 
 // This table is used to look up a Rider record from
@@ -148,7 +155,7 @@ static int procConnect(Grs *pGrs, const CmdArgs *pArgs)
 
     {
         char fmtBuf[SSFMT_BUF_LEN];
-        MSGLOG(INFO, "New connection: sd=%d addr=%s\n", sd, ssFmt(&sockAddr, fmtBuf, sizeof (fmtBuf), true));
+        MSGLOG(INFO, "New connection: sd=%d addr=%s", sd, ssFmt(&sockAddr, fmtBuf, sizeof (fmtBuf), true));
     }
 
     if ((pRider = calloc(1, sizeof (Rider))) == NULL) {
@@ -178,9 +185,9 @@ static int procDisconnect(Grs *pGrs, const CmdArgs *pArgs, int fd)
     // Use the file descriptor to locate the Rider record
     if ((pRider = fdMapTbl[fd]) != NULL) {
         char fmtBuf[SSFMT_BUF_LEN];
-        MSGLOG(INFO, "Disconnected: sd=%d addr=%s state=%s name=%s\n",
+        MSGLOG(INFO, "Disconnected: sd=%d addr=%s state=%s name=\"%s\"",
                 fd, ssFmt(&pRider->sockAddr, fmtBuf, sizeof (fmtBuf), true),
-                riderStateTble[pRider->state], pRider->name);
+                riderStateTbl[pRider->state], pRider->name);
         if ((pRider->state == registered) || (pRider->state == active)) {
             // Remove rider from its gender/age list
             TAILQ_REMOVE(&pGrs->riderList[pRider->gender][pRider->ageGrp], pRider, tqEntry);
@@ -375,10 +382,10 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
             // Get all the tag values
             char *ride = jsonGetTagValue(pMsg, "ride");
             if (ride == NULL) {
-                MSGLOG(ERROR, "No ride name specified! fd=%d\n", fd);
+                MSGLOG(ERROR, "No ride name specified! fd=%d", fd);
                 return -1;
             } else if (strcmp(ride, pArgs->rideName) != 0) {
-                MSGLOG(ERROR, "Invalid ride name! fd=%d ride=%s\n", fd, ride);
+                MSGLOG(ERROR, "Invalid ride name! fd=%d ride=%s", fd, ride);
                 free(ride);
                 return -1;
             }
@@ -406,13 +413,13 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
             // Don't need this anymore
             free(ride);
 
-            MSGLOG(INFO, "Received regReq message: fd=%d name=%s gender=%d age=%d\n",
-                    fd, pRider->name, pRider->gender, pRider->age);
+            MSGLOG(INFO, "Received regReq message: fd=%d name=\"%s\" gender=%s age=%d",
+                    fd, pRider->name, genderTbl[pRider->gender], pRider->age);
 
             // Done!
             return 0;
         } else {
-            MSGLOG(ERROR, "Invalid state! fd=%d state=%s\n", fd, riderStateTble[pRider->state]);
+            MSGLOG(ERROR, "Invalid state! fd=%d state=%s", fd, riderStateTbl[pRider->state]);
             return -1;
         }
     }
@@ -446,7 +453,7 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
 
     // Make sure the group ride has started
     if (!pGrs->rideActive) {
-        MSGLOG(ERROR, "Group ride is not active! fd=%d\n", fd);
+        MSGLOG(ERROR, "Group ride is not active! fd=%d", fd);
         return -1;
     }
 
@@ -459,7 +466,7 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
                 sscanf(distance, "%d", &pRider->distance);
                 free(distance);
             } else {
-                MSGLOG(ERROR, "No distance specified! fd=%d\n", fd);
+                MSGLOG(ERROR, "No distance specified! fd=%d", fd);
             }
 
             char *power = jsonGetTagValue(pMsg, "power");
@@ -467,16 +474,16 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
                 sscanf(power, "%d", &pRider->power);
                 free(power);
             } else {
-                MSGLOG(ERROR, "No power specified! fd=%d\n", fd);
+                MSGLOG(ERROR, "No power specified! fd=%d", fd);
             }
 
-            MSGLOG(INFO, "Received progUpd message: fd=%d name=%s distance=%d power=%d\n",
+            MSGLOG(INFO, "Received progUpd message: fd=%d name=\"%s\" distance=%d power=%d",
                     fd, pRider->name, pRider->distance, pRider->power);
 
             // Done!
             return 0;
         } else {
-            MSGLOG(ERROR, "Invalid state! fd=%d state=%s\n", fd, riderStateTble[pRider->state]);
+            MSGLOG(ERROR, "Invalid state! fd=%d state=%s", fd, riderStateTbl[pRider->state]);
             return -1;
         }
     }
@@ -502,21 +509,21 @@ static int procData(Grs *pGrs, const CmdArgs *pArgs, int fd)
                 } else if (strncmp(msgType, "\"progUpd\"", 9) == 0) {
                     procProgUpdMsg(pGrs, pArgs, fd, &msg);
                 } else {
-                    MSGLOG(ERROR, "Unsupported message type! msgType=%s\n", msgType);
+                    MSGLOG(ERROR, "Unsupported message type! msgType=%s", msgType);
                     jsonDumpObject(&msg);
                     return -1;
                 }
             } else {
-                MSGLOG(ERROR, "JSON message has no type!\n");
+                MSGLOG(ERROR, "JSON message has no type!");
                 jsonDumpObject(&msg);
                 return -1;
             }
         } else {
-            MSGLOG(ERROR, "No JSON message found! fd=%d\n", fd);
+            MSGLOG(ERROR, "No JSON message found! fd=%d", fd);
             return -1;
         }
     } else {
-        MSGLOG(ERROR, "Failed to read data! fd=%d (%s)\n", fd, strerror(errno));
+        MSGLOG(ERROR, "Failed to read data! fd=%d (%s)", fd, strerror(errno));
         return -1;
     }
 
@@ -530,7 +537,7 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
     // First check for new connections
     if (pGrs->pollFds[0].revents & POLLIN) {
         if (procConnect(pGrs, pArgs) != 0) {
-            MSGLOG(ERROR, "Failed to create new connection!\n");
+            MSGLOG(ERROR, "Failed to create new connection!");
             return -1;
         }
     }
@@ -543,7 +550,7 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
         } else if (revents & POLLIN) {
             s = procData(pGrs, pArgs, pGrs->pollFds[n].fd);
         } else if (revents != 0) {
-            MSGLOG(ERROR, "Unknown event! fd=%d revents=%x\n",
+            MSGLOG(ERROR, "Unknown event! fd=%d revents=%x",
                     pGrs->pollFds[n].fd, pGrs->pollFds[n].revents);
             return -1;
         }
@@ -591,7 +598,7 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
 //
 int sendReportMsg(Grs *pGrs, const CmdArgs *pArgs)
 {
-    MSGLOG(INFO, "Sending report messages...\n");
+    MSGLOG(INFO, "Sending report messages...");
     clock_gettime(CLOCK_REALTIME, &pGrs->lastReport);
 
     return 0;
@@ -611,7 +618,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
     // Allocate space for the list of file descriptors
     // to be monitored by poll()
     if ((pGrs->pollFds = calloc(pArgs->maxRiders, sizeof (PollFd))) == NULL) {
-        MSGLOG(ERROR, "Failed to alloc pollFds array! (%s)\n", strerror(errno));
+        MSGLOG(ERROR, "Failed to alloc pollFds array! (%s)", strerror(errno));
         return -1;
     }
 
@@ -637,7 +644,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
         // are monitoring, or until the report period expires.
         tvSub(&timeout, &reportPeriod, &deltaT);
         if ((nFds = ppoll(pGrs->pollFds, pGrs->numFds, &timeout, NULL)) < 0) {
-            MSGLOG(ERROR, "Failed to wait for file descriptor events! (%s)\n", strerror(errno));
+            MSGLOG(ERROR, "Failed to wait for file descriptor events! (%s)", strerror(errno));
             return -1;
         }
 
@@ -666,7 +673,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
             time_t now = time(NULL);
             if (now >= pArgs->startTime) {
                 // Ready-Set-Go!
-                MSGLOG(INFO, "Ready... Set... Go!\n");
+                MSGLOG(INFO, "Ready... Set... Go!");
                 if (sendGoMsg(pGrs, pArgs) != 0) {
                     // Error message already printed
                     return -1;
