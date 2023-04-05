@@ -42,12 +42,15 @@ OPTIONS:
         Specifies the IP address where the GRS app will listen for
         connections. If no address is specified, the server will use
         any of the available network interfaces.
+    --leaderboard-period <secs>
+        Specifies the period (in seconds) the GRS app needs to send
+        its "leaderboard" messages to the client apps.
     --max-riders <num>
         Specifies the maximum number of riders allowed to join the
         group ride.
-    --report-period <secs>
+    --prog-update-period <secs>
         Specifies the period (in seconds) the client app's need to send
-        their update messages to the server.
+        their "progress update" messages to the server.
     --ride-name <name>
         Specifies the name of the group ride.
     --start-time <time>
@@ -71,31 +74,49 @@ $ sudo firewall-cmd --reload
 
 # Example
 
-In the following example we schedule the group ride "RPI-TCR" to start at 2023-04-04 10:06:00 UTC, and instruct the server to listen for connections on its IP address 192.168.0.249 and port 5000, and to use the default 1 second report period and 100 rider limit: 
+In the following example we schedule the group ride "RPI-TCR" to start at 09:07:00 on 2023-04-05, and instruct the GRS to listen for connections on its IP address 192.168.0.249 and port 5000, and to use the default message report periods and rider limit: 
 
 ```
-$ grs --ip-addr 192.168.0.249 --tcp-port 50000 --ride-name RPI-TCR --control-file http://grs.net/RPI-TCR.shiz --video-file  http://grs.net/RPI-TCR.mp4 --start-time 2023-04-04T10:06:00Z
-2023-04-04T11:04:28:INFO:parseCmdArgs: rideName=RPI-TCR controlFile=http://grs.net/RPI-TCR.shiz videoFile=http://grs.net/RPI-TCR.mp4 startTime=2023-04-04T11:06:00 maxRiders=100 reportPeriod=1
-2023-04-04T11:04:35:INFO:procConnect: New connection: sd=4 addr=208.184.70.254[14027]
-2023-04-04T11:04:35:INFO:procRegReqMsg: Received regReq message: fd=4 name="John" gender=male age=30
-2023-04-04T11:04:37:INFO:procConnect: New connection: sd=5 addr=208.184.70.254[34055]
-2023-04-04T11:04:37:INFO:procRegReqMsg: Received regReq message: fd=5 name="Peter" gender=male age=31
-2023-04-04T11:04:38:INFO:procConnect: New connection: sd=6 addr=208.184.70.254[40528]
-2023-04-04T11:04:38:INFO:procRegReqMsg: Received regReq message: fd=6 name="Mary" gender=female age=25
-2023-04-04T11:04:39:INFO:procConnect: New connection: sd=7 addr=208.184.70.254[23576]
-2023-04-04T11:04:39:INFO:procRegReqMsg: Received regReq message: fd=7 name="Suzie" gender=female age=26
-2023-04-04T11:06:00:INFO:grsMain: Ready... Set... Go!
-2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=7 name="Suzie" distance=0 power=0
-2023-04-04T11:06:00:INFO:sendReportMsg: Sending report messages...
-2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=6 name="Mary" distance=0 power=0
-2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=4 name="John" distance=0 power=0
-2023-04-04T11:06:00:INFO:procProgUpdMsg: Received progUpd message: fd=5 name="Peter" distance=0 power=0
-2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=7 name="Suzie" distance=1 power=1
-2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=6 name="Mary" distance=1 power=1
-2023-04-04T11:06:01:INFO:sendReportMsg: Sending report messages...
-2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=4 name="John" distance=1 power=1
-2023-04-04T11:06:01:INFO:procProgUpdMsg: Received progUpd message: fd=5 name="Peter" distance=1 power=1
-
+$ grs --ip-addr 192.168.0.249 --tcp-port 50000 --ride-name RPI-TCR --control-file http://grs.net/RPI-TCR.shiz --video-file  http://grs.net/RPI-TCR.mp4 --start-time 2023-04-05T09:07:00Z
+2023-04-05T10:05:55:INFO:parseCmdArgs: rideName=RPI-TCR controlFile=http://grs.net/RPI-TCR.shiz videoFile=http://grs.net/RPI-TCR.mp4 startTime=2023-04-05T10:07:00 maxRiders=100 progUpdPeriod=1 leaderboardPeriod=2
+2023-04-05T10:06:01:INFO:procConnect: New connection: sd=4 addr=208.184.70.254[ 8042]
+2023-04-05T10:06:01:INFO:procRegReqMsg: Received "regReq" message: fd=4 name="John" gender=male age=30
+2023-04-05T10:06:01:INFO:sendRegRespMsg: Sent "regResp" message: fd=4 name="John" bibNum=1
+2023-04-05T10:06:02:INFO:procConnect: New connection: sd=5 addr=208.184.70.254[23386]
+2023-04-05T10:06:02:INFO:procRegReqMsg: Received "regReq" message: fd=5 name="Peter" gender=male age=34
+2023-04-05T10:06:02:INFO:sendRegRespMsg: Sent "regResp" message: fd=5 name="Peter" bibNum=2
+2023-04-05T10:06:05:INFO:procConnect: New connection: sd=6 addr=208.184.70.254[26557]
+2023-04-05T10:06:05:INFO:procRegReqMsg: Received "regReq" message: fd=6 name="Mary" gender=female age=21
+2023-04-05T10:06:05:INFO:sendRegRespMsg: Sent "regResp" message: fd=6 name="Mary" bibNum=3
+2023-04-05T10:06:07:INFO:procConnect: New connection: sd=7 addr=208.184.70.254[51802]
+2023-04-05T10:06:07:INFO:procRegReqMsg: Received "regReq" message: fd=7 name="Suzie" gender=female age=23
+2023-04-05T10:06:07:INFO:sendRegRespMsg: Sent "regResp" message: fd=7 name="Suzie" bibNum=4
+2023-04-05T10:07:01:INFO:grsMain: Ready... Set... Go!
+2023-04-05T10:07:01:INFO:sendRideStartedMsg: Sent "rideStarted" message: fd=7 name="Suzie" bibNum=4
+2023-04-05T10:07:01:INFO:sendRideStartedMsg: Sent "rideStarted" message: fd=6 name="Mary" bibNum=3
+2023-04-05T10:07:01:INFO:sendRideStartedMsg: Sent "rideStarted" message: fd=5 name="Peter" bibNum=2
+2023-04-05T10:07:01:INFO:sendRideStartedMsg: Sent "rideStarted" message: fd=4 name="John" bibNum=1
+2023-04-05T10:07:01:INFO:procProgUpdMsg: Received "progUpd" message: fd=7 name="Suzie" distance=0 power=0
+2023-04-05T10:07:01:INFO:sendLeaderboardMsg: Sending "leaderboard" message: {"msgType": "leaderboard", "category": "WU35", "riderList": [{"name": "Suzie", "bibNum": "4", "distance": "0", "power": "0"}, {"name": "Mary", "bibNum": "3", "distance": "0", "power": "0"}]}
+2023-04-05T10:07:01:INFO:sendLeaderboardMsg: Sending "leaderboard" message: {"msgType": "leaderboard", "category": "MU35", "riderList": [{"name": "Peter", "bibNum": "2", "distance": "0", "power": "0"}, {"name": "John", "bibNum": "1", "distance": "0", "power": "0"}]}
+2023-04-05T10:07:01:INFO:procProgUpdMsg: Received "progUpd" message: fd=5 name="Peter" distance=0 power=0
+2023-04-05T10:07:01:INFO:procProgUpdMsg: Received "progUpd" message: fd=4 name="John" distance=0 power=0
+2023-04-05T10:07:01:INFO:procProgUpdMsg: Received "progUpd" message: fd=6 name="Mary" distance=0 power=0
+2023-04-05T10:07:02:INFO:procProgUpdMsg: Received "progUpd" message: fd=5 name="Peter" distance=1 power=1
+2023-04-05T10:07:02:INFO:procProgUpdMsg: Received "progUpd" message: fd=6 name="Mary" distance=1 power=1
+2023-04-05T10:07:02:INFO:procProgUpdMsg: Received "progUpd" message: fd=7 name="Suzie" distance=1 power=1
+2023-04-05T10:07:02:INFO:procProgUpdMsg: Received "progUpd" message: fd=4 name="John" distance=1 power=1
+2023-04-05T10:07:03:INFO:procProgUpdMsg: Received "progUpd" message: fd=5 name="Peter" distance=2 power=2
+2023-04-05T10:07:03:INFO:sendLeaderboardMsg: Sending "leaderboard" message: {"msgType": "leaderboard", "category": "WU35", "riderList": [{"name": "Suzie", "bibNum": "4", "distance": "1", "power": "1"}, {"name": "Mary", "bibNum": "3", "distance": "1", "power": "1"}]}
+2023-04-05T10:07:03:INFO:sendLeaderboardMsg: Sending "leaderboard" message: {"msgType": "leaderboard", "category": "MU35", "riderList": [{"name": "Peter", "bibNum": "2", "distance": "2", "power": "2"}, {"name": "John", "bibNum": "1", "distance": "1", "power": "1"}]}
+    .
+    .
+    .
+2023-04-05T10:07:11:INFO:procDisconnect: Disconnected: sd=4 addr=208.184.70.254[ 8042] state=registered name="John"
+2023-04-05T10:07:11:INFO:procDisconnect: Disconnected: sd=5 addr=208.184.70.254[23386] state=registered name="Peter"
+2023-04-05T10:07:11:INFO:procDisconnect: Disconnected: sd=7 addr=208.184.70.254[51802] state=registered name="Suzie"
+2023-04-05T10:07:11:INFO:sendLeaderboardMsg: Sending "leaderboard" message: {"msgType": "leaderboard", "category": "WU35", "riderList": [{"name": "Mary", "bibNum": "3", "distance": "9", "power": "9"}]}
+2023-04-05T10:07:11:INFO:procDisconnect: Disconnected: sd=6 addr=208.184.70.254[26557] state=registered name="Mary"
 ```
 
 # JSON Messages
@@ -108,13 +129,13 @@ When a user wants to join a group ride, they configure their VCA with the requir
    {
      "msgType": "regReq",
      "name": "<RidersName>",
-     "gender": "{female|male|nonBinary}",
+     "gender": "{female|male|unspec}",
      "age": "<RidersAge>",
      "ride": "<RideName>"
    }
 ```
 
-"name" is the name or nickname of the rider, used to identify him/her in the leaderboard. "gender" and "age" are the gender and age of the rider, and are optional. "ride" is the name of the group ride the user wants to join.
+"name" is the name or nickname of the rider, used to identify him/her in the leaderboard. "gender" and "age" are the gender and age of the rider, which are used to place the rider in his/her correct category; e.g. 'Men U35", "Women U30", etc. "ride" is the name of the group ride the user wants to join.
 
 If everything is OK, the GRS sends back a "Registration Response" message to the VCA. The message has the following format:
 
@@ -126,13 +147,21 @@ If everything is OK, the GRS sends back a "Registration Response" message to the
      "startTime": "<StartTimeInUTC>",
      "controlFile": "<URL>",
      "videoFile": "<URL>",
-     "reportPeriod"="<ReportPeriodInSec>"
+     "progUpdPeriod"="<ProgUpdPeriodInSec>"
    }
 ```
 
-"status" indicates whether or not the registration was accepted. "bibNum" is the bib number assigned to the rider. "startTime" is the UTC time at which the ride is scheduled to start. "controlFile" and "videoFile" are the URL's to the control and video files of the ride. "reportPeriod" is the time (in seconds) the VCA should send its Progress Update messages to the GRS.  The VCA can use the URL of the control and video files to download the files, or to validate that they match the local copy they may already have in their cache.
+"status" indicates whether or not the registration was accepted. "bibNum" is the bib number assigned to the rider. "startTime" is the UTC time at which the ride is scheduled to start. "controlFile" and "videoFile" are the URL's to the control and video files of the ride. "progUpdPeriod" is the time (in seconds) the VCA should send its Progress Update messages to the GRS.  The VCA can use the URL of the control and video files to download the files, or to validate that they match the local copy they may already have in their cache.
 
-If the registration is successful, the VCA just sits idle until the GRS sends the "Go" message to all the registered riders.  At that pont, the VCA starts sending periodic "Progress Update" message to the GRS, to indicate the rider's position in the course, and its current speed and power values. The message has the following format:
+If the registration is successful, the VCA just sits idle until the GRS sends the "Ride Started" message to all the registered riders, indicating that it is time to start pedalling.  The message has the following format:
+
+```
+   {
+     "msgType": "rideStarted"
+   }
+```
+
+At that pont, the VCA starts sending periodic "Progress Update" message to the GRS, to indicate the rider's position in the course, and its current speed and power values. The message has the following format:
 
 ```
    {
@@ -143,11 +172,12 @@ If the registration is successful, the VCA just sits idle until the GRS sends th
    }
 ```
 
-The GRS collects the data from the "Progress Update" messages sent by each of the VCA's, and periodically sends a "Leaderboard" message to all registered riders in the same gender and age group.  Assuming there are N riders in the given gender and age group, the "Leaderboard" message would have the following format:
+The GRS collects the data from the "Progress Update" messages sent by each of the VCA's, and periodically sends a "Leaderboard" message to all registered riders in the same category; i.e. same gender and age group.  Assuming there are N riders in the given gender and age group, the "Leaderboard" message would have the following format:
 
 ```
    {
      "msgType": "leaderboard",
+     "category": "<Category>",
      "riderList": [
        {"name": "<RidersName1>", "bibNum": <BibNum1>", "distance": "<DistanceInMeters1>", "power": "<PowerInWatts1>", "speed": "<SpeedInMetersPerSec1>"},
        {"name": "<RidersName2>", "bibNum": <BibNum2>", "distance": "<DistanceInMeters2>", "power": "<PowerInWatts2>", "speed": "<SpeedInMetersPerSec2>"},

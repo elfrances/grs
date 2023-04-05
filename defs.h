@@ -23,8 +23,9 @@ typedef enum Bool {
 
 typedef struct CmdArgs {
     char *controlFile;          // the URL of the ride's control file
+    int leaderboardPeriod;      // Period (in seconds) the GRS needs to send its leaderboard messages
     int maxRiders;              // Max number of riders that can join the group ride
-    int reportPeriod;           // Period (in seconds) the client app needs to send its progUpd messages
+    int progUpdPeriod;          // Period (in seconds) the client app needs to send its progUpd messages
     char *rideName;             // the name of the group ride
     SockAddrStore sockAddr;     // IP address and TCP port (in network byte order) used by GRS to listen for client connections
     time_t startTime;           // Start date/time (in UTC) for the group ride
@@ -36,8 +37,7 @@ typedef enum Gender {
     unspec = 0,
     female = 1,
     male = 2,
-    nonBinary = 3,
-    GenderMax = 4
+    GenderMax = 3
 } Gender;
 
 typedef enum AgeGrp {

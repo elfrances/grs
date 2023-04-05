@@ -25,8 +25,14 @@ static const char *genderTbl[] = {
     [unspec]        "unspec",
     [female]        "female",
     [male]          "male",
-    [nonBinary]     "nonBinary",
 };
+
+// Message types:
+static const char *regReq = "regReq";
+static const char *regResp = "regResp";
+static const char *rideStarted = "rideStarted";
+static const char *progUpd = "progUpd";
+static const char *leaderboard = "leaderboard";
 
 // This table is used to look up a Rider record from
 // its associated socket file descriptor
@@ -60,6 +66,7 @@ static char *ssFmt(const SockAddrStore *pSock, char *fmtBuf, size_t bufLen, Bool
     }
 
     inet_ntop(pSock->ss_family, pAddr, fmtBuf, bufLen);
+
     if (printPort) {
         size_t sLen = strlen(fmtBuf);
         char *pBuf = fmtBuf + sLen;
@@ -68,6 +75,31 @@ static char *ssFmt(const SockAddrStore *pSock, char *fmtBuf, size_t bufLen, Bool
 
     return fmtBuf;
 }
+
+static const char *genTbl[] = {
+        [unspec]    "G",
+        [female]    "W",
+        [male]      "M",
+};
+
+static const char *ageGrpTbl[] = {
+        [undef]     "G",
+        [u19]       "U19",
+        [u35]       "U35",
+        [u40]       "U40",
+        [u45]       "U45",
+        [u50]       "U50",
+        [u55]       "U55",
+        [u60]       "U60",
+        [u65]       "U65",
+        [u70]       "U70",
+        [u75]       "U75",
+        [u80]       "U80",
+        [u85]       "U85",
+        [u90]       "U90",
+        [u95]       "U95",
+        [u100]      "U100",
+};
 
 static void buildPollFds(Grs *pGrs)
 {
@@ -212,8 +244,6 @@ static Gender genderFromTagVal(const char *tagVal)
             return male;
         } else if (strcmp(tagVal, "female") == 0) {
             return female;
-        } else if (strcmp(tagVal, "nonBinary") == 0) {
-            return nonBinary;
         }
     }
 
@@ -281,7 +311,7 @@ static AgeGrp ageToAgeGrp(int age)
 //     "startTime": "<StartTimeInUTC>",
 //     "controlFile": "<URL>",
 //     "videoFile": "<URL>",
-//     "reportPeriod": "<ReportPeriodInSec>"
+//     "progUpdPeriod": "<ProgUpdPeriodInSec>"
 //   }
 //
 // Example:
@@ -293,7 +323,7 @@ static AgeGrp ageToAgeGrp(int age)
 //     "startTime": "1680469260",
 //     "controlFile": "http://grs.net/RPI-TCR.shiz",
 //     "videoFile": "http://grs.net/RPI-TCR.mp4",
-//     "reportPeriod": "2"
+//     "progUpdPeriod": "2"
 //  }
 //
 static int sendRegRespMsg(Grs *pGrs, const CmdArgs *pArgs, Rider *pRider)
@@ -302,8 +332,8 @@ static int sendRegRespMsg(Grs *pGrs, const CmdArgs *pArgs, Rider *pRider)
     size_t msgLen;
     ssize_t len;
 
-    snprintf(msg, sizeof (msg), "{\"msgType\": \"regResp\", \"status\": \"success\", \"bibNum\": \"%d\", \"startTime\": \"%ld\", \"controlFile\": \"%s\", \"videoFile\": \"%s\", \"reportPeriod\": \"%d\"}",
-            pRider->bibNum, pArgs->startTime, pArgs->controlFile, pArgs->videoFile, pArgs->reportPeriod);
+    snprintf(msg, sizeof (msg), "{\"msgType\": \"%s\", \"status\": \"success\", \"bibNum\": \"%d\", \"startTime\": \"%ld\", \"controlFile\": \"%s\", \"videoFile\": \"%s\", \"progUpdPeriod\": \"%d\"}",
+            regResp, pRider->bibNum, pArgs->startTime, pArgs->controlFile, pArgs->videoFile, pArgs->progUpdPeriod);
     msgLen = strlen(msg) + 1;
 
     if ((len = send(pRider->sd, msg, msgLen, 0)) != msgLen) {
@@ -311,21 +341,25 @@ static int sendRegRespMsg(Grs *pGrs, const CmdArgs *pArgs, Rider *pRider)
         return -1;
     }
 
+    MSGLOG(INFO, "Sent \"%s\" message: fd=%d name=\"%s\" bibNum=%d",
+            regResp, pRider->sd, pRider->name, pRider->bibNum);
+
     return 0;
 }
 
-// Send a GO! message to all the registered riders
+// Send a Ride Started message to all the registered riders in each
+// category.
 //
 // Message format:
 //
-//   {"type": "go"}
+//   {"type": "rideStarted"}
 //
-static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
+static int sendRideStartedMsg(Grs *pGrs, const CmdArgs *pArgs)
 {
     char msg[1024];
     size_t msgLen;
 
-    snprintf(msg, sizeof (msg), "{\"msgType\": \"go\"}");
+    snprintf(msg, sizeof (msg), "{\"msgType\": \"%s\"}", rideStarted);
     msgLen = strlen(msg) + 1;
 
     for (Gender gender = unspec; gender < GenderMax; gender++) {
@@ -340,6 +374,9 @@ static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
                         MSGLOG(ERROR, "Failed to send data! fd=%d (%s)\n", pRider->sd, strerror(errno));
                         return -1;
                     }
+
+                    MSGLOG(INFO, "Sent \"%s\" message: fd=%d name=\"%s\" bibNum=%d",
+                            rideStarted, pRider->sd, pRider->name, pRider->bibNum);
                 }
             }
         }
@@ -355,7 +392,7 @@ static int sendGoMsg(Grs *pGrs, const CmdArgs *pArgs)
 //   {
 //     "msgType": "regReq",
 //     "name": "<RidersName>",
-//     "gender": "{female|male|nonBinary|unspec}",
+//     "gender": "{female|male|unspec}",
 //     "age": "<RidersAge>",
 //     "ride": "<RideName>"
 //   }
@@ -397,6 +434,9 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
             // Assign a bib number
             pRider->bibNum = ++pGrs->numRegRiders;
 
+            MSGLOG(INFO, "Received \"%s\" message: fd=%d name=\"%s\" gender=%s age=%d",
+                     regReq, fd, pRider->name, genderTbl[pRider->gender], pRider->age);
+
             // Send back the Registration Response message
             if (sendRegRespMsg(pGrs, pArgs, pRider) != 0) {
                 // Error message already printed
@@ -412,9 +452,6 @@ static int procRegReqMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *pM
 
             // Don't need this anymore
             free(ride);
-
-            MSGLOG(INFO, "Received regReq message: fd=%d name=\"%s\" gender=%s age=%d",
-                    fd, pRider->name, genderTbl[pRider->gender], pRider->age);
 
             // Done!
             return 0;
@@ -477,8 +514,8 @@ static int procProgUpdMsg(Grs *pGrs, const CmdArgs *pArgs, int fd, JsonObject *p
                 MSGLOG(ERROR, "No power specified! fd=%d", fd);
             }
 
-            MSGLOG(INFO, "Received progUpd message: fd=%d name=\"%s\" distance=%d power=%d",
-                    fd, pRider->name, pRider->distance, pRider->power);
+            MSGLOG(INFO, "Received \"%s\" message: fd=%d name=\"%s\" distance=%d power=%d",
+                    progUpd, fd, pRider->name, pRider->distance, pRider->power);
 
             // Done!
             return 0;
@@ -514,7 +551,7 @@ static int procData(Grs *pGrs, const CmdArgs *pArgs, int fd)
                     return -1;
                 }
             } else {
-                MSGLOG(ERROR, "JSON message has no type!");
+                MSGLOG(ERROR, "JSON message has no type element!");
                 jsonDumpObject(&msg);
                 return -1;
             }
@@ -571,34 +608,101 @@ int procFdEvents(Grs *pGrs, const CmdArgs *pArgs, int nFds)
 //
 //   {
 //     "msgType": "leaderboard",
+//     "category": "<Category>",
 //     "riderList": [
 //       {"name": "<RidersName0>", "bibNum": <BibNum0>", "distance": "<DistanceInMeters0>", "power": "<PowerInWatts0>"},
 //       {"name": "<RidersName1>", "bibNum": <BibNum1>", "distance": "<DistanceInMeters1>", "power": "<PowerInWatts1>"},
 //           .
 //           .
 //           .
-//       {"name": "<RidersNameN>", "bibNum": <BibNumN>", "distance": "<DistanceInMetersN>", "power": "<PowerInWattsN>"},
-//     ],
+//       {"name": "<RidersNameN>", "bibNum": <BibNumN>", "distance": "<DistanceInMetersN>", "power": "<PowerInWattsN>"}
+//     ]
 //   }
 //
 // Example:
 //
 //   {
 //     "msgType": "leaderboard",
+//     "category": "MU65",
 //     "riderList": [
 //       {"name": "Marcelo Mourier", "bibNum": 123", "distance": "1620", "power": "200"},
-//       {"name": "Patrick Fulghum", "bibNum": 124", "distance": "1840", "power": "250"},
+//       {"name": "Claudio Ortega", "bibNum": 124", "distance": "1840", "power": "250"},
 //           .
 //           .
 //           .
-//       {"name": "Rick Norton", "bibNum": 132", "distance": "1850", "power": "250"},
-//     ],
+//       {"name": "Esteban Castro", "bibNum": 132", "distance": "1850", "power": "250"}
+//     ]
 //   }
 //  }
 //
-int sendReportMsg(Grs *pGrs, const CmdArgs *pArgs)
+int sendLeaderboardMsg(Grs *pGrs, const CmdArgs *pArgs)
 {
-    MSGLOG(INFO, "Sending report messages...");
+    //MSGLOG(INFO, "Sending leaderboard messages...");
+
+    for (Gender gender = unspec; gender < GenderMax; gender++) {
+        for (AgeGrp ageGrp = undef; ageGrp < AgeGrpMax; ageGrp++) {
+            Rider *pRider;
+            static char msg[65536];
+            char *buf;
+            size_t bufLen;
+            size_t msgLen;
+            int numRiders;
+            int n;
+
+            buf = msg;
+            bufLen = sizeof (msg);
+            msgLen = 0;
+            numRiders = 0;
+
+            n = snprintf(buf, bufLen, "{\"msgType\": \"%s\", \"category\": \"%s%s\", \"riderList\": [",
+                    leaderboard, genTbl[gender], ageGrpTbl[ageGrp]);
+            msgLen += n;
+            buf += n;
+            bufLen -= n;
+
+            // Populate the riderList array
+            TAILQ_FOREACH(pRider, &pGrs->riderList[gender][ageGrp], tqEntry) {
+                if (pRider->state == registered) {
+                    n = snprintf(buf, bufLen, "{\"name\": \"%s\", \"bibNum\": \"%d\", \"distance\": \"%d\", \"power\": \"%d\"}, ",
+                            pRider->name, pRider->bibNum, pRider->distance, pRider->power);
+                    msgLen += n;
+                    buf += n;
+                    bufLen -= n;
+                    numRiders++;
+                }
+            }
+
+            // Remove the last ", " characters
+            msgLen -= 2;
+            buf -= 2;
+            bufLen +=2;
+
+            n = snprintf(buf, bufLen, "]}");
+            msgLen += n;
+            buf += n;
+            bufLen -= n;
+
+            if (numRiders > 0) {
+                MSGLOG(INFO, "Sending \"%s\" message: %s", leaderboard, msg);
+
+                // Now send the message to all the riders in this category
+                TAILQ_FOREACH(pRider, &pGrs->riderList[gender][ageGrp], tqEntry) {
+                    if (pRider->state == registered) {
+                        ssize_t len;
+
+                        if ((len = send(pRider->sd, msg, msgLen, 0)) != msgLen) {
+                            MSGLOG(ERROR, "Failed to send message! fd=%d (%s)\n", pRider->sd, strerror(errno));
+                            return -1;
+                        }
+
+                        MSGLOG(INFO, "Sent \"%s\" message: fd=%d name=\"%s\" bibNum=%d",
+                                leaderboard, pRider->sd, pRider->name, pRider->bibNum);
+                    }
+                }
+            }
+        }
+    }
+
     clock_gettime(CLOCK_REALTIME, &pGrs->lastReport);
 
     return 0;
@@ -606,7 +710,7 @@ int sendReportMsg(Grs *pGrs, const CmdArgs *pArgs)
 
 int grsMain(Grs *pGrs, const CmdArgs *pArgs)
 {
-    Timespec reportPeriod = { .tv_sec = pArgs->reportPeriod, .tv_nsec = 0};
+    Timespec leaderboardPeriod = { .tv_sec = pArgs->leaderboardPeriod, .tv_nsec = 0};
 
     // Initialize the lists of registered riders
     for (Gender gender = unspec; gender < GenderMax; gender++) {
@@ -640,9 +744,10 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
         Timespec deltaT = {0};
         Timespec timeout;
 
-        // Wait for an event on any of the file descriptors we
-        // are monitoring, or until the report period expires.
-        tvSub(&timeout, &reportPeriod, &deltaT);
+        // Wait for an event on any of the file descriptors
+        // we are monitoring, or until the leaderboard report
+        // period expires.
+        tvSub(&timeout, &leaderboardPeriod, &deltaT);
         if ((nFds = ppoll(pGrs->pollFds, pGrs->numFds, &timeout, NULL)) < 0) {
             MSGLOG(ERROR, "Failed to wait for file descriptor events! (%s)", strerror(errno));
             return -1;
@@ -659,11 +764,12 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
         }
 
         if (pGrs->rideActive) {
-            // Time to send the report messages?
+            // Time to send the leaderboard messages?
             tvSub(&deltaT, &start, &pGrs->lastReport);
-            if (tvCmp(&deltaT, &reportPeriod) >= 0) {
-                // Send the report message to the clients
-                if (sendReportMsg(pGrs, pArgs) != 0) {
+            if (tvCmp(&deltaT, &leaderboardPeriod) >= 0) {
+                // Send the leaderboard message to each of
+                // the registered riders...
+                if (sendLeaderboardMsg(pGrs, pArgs) != 0) {
                     // Error message already printed
                     return -1;
                 }
@@ -674,7 +780,7 @@ int grsMain(Grs *pGrs, const CmdArgs *pArgs)
             if (now >= pArgs->startTime) {
                 // Ready-Set-Go!
                 MSGLOG(INFO, "Ready... Set... Go!");
-                if (sendGoMsg(pGrs, pArgs) != 0) {
+                if (sendRideStartedMsg(pGrs, pArgs) != 0) {
                     // Error message already printed
                     return -1;
                 }

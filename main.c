@@ -29,12 +29,15 @@ static const char *help =
         "        Specifies the IP address where the GRS app will listen for\n"
         "        connections. If no address is specified, the server will use\n"
         "        any of the available network interfaces.\n"
+        "    --leaderboard-period <secs>\n"
+        "        Specifies the period (in seconds) the GRS app needs to send\n"
+        "        its \"leaderboard\" messages to the client apps.\n"
         "    --max-riders <num>\n"
         "        Specifies the maximum number of riders allowed to join the\n"
         "        group ride.\n"
-        "    --report-period <secs>\n"
+        "    --prog-update-period <secs>\n"
         "        Specifies the period (in seconds) the client app's need to send\n"
-        "        their update messages to the server.\n"
+        "        their \"progress update\" messages to the server.\n"
         "    --ride-name <name>\n"
         "        Specifies the name of the group ride.\n"
         "    --start-time <time>\n"
@@ -73,7 +76,8 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
 
     // Set the default values
     pArgs->maxRiders = 100;
-    pArgs->reportPeriod = 1;
+    pArgs->progUpdPeriod = 1;
+    pArgs->leaderboardPeriod = 2;
     pArgs->tcpPort = DEF_TCP_PORT;
 
     for (int n = 1; n <= numArgs; n++) {
@@ -111,6 +115,13 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
                     return invArg(val);
                 }
             }
+        } else if (strcmp(arg, "--leaderboard-period") == 0) {
+            val = argv[++n];
+            if (val == NULL) {
+                return missArg(arg, "<num>");
+            } else if (sscanf(val, "%d", &pArgs->leaderboardPeriod) != 1) {
+                return invArg(val);
+            }
         } else if (strcmp(arg, "--max-riders") == 0) {
             val = argv[++n];
             if (val == NULL) {
@@ -118,11 +129,11 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
             } else if (sscanf(val, "%d", &pArgs->maxRiders) != 1) {
                 return invArg(val);
             }
-        } else if (strcmp(arg, "--report-period") == 0) {
+        } else if (strcmp(arg, "--prog-update-period") == 0) {
             val = argv[++n];
             if (val == NULL) {
                 return missArg(arg, "<num>");
-            } else if (sscanf(val, "%d", &pArgs->reportPeriod) != 1) {
+            } else if (sscanf(val, "%d", &pArgs->progUpdPeriod) != 1) {
                 return invArg(val);
             }
         } else if (strcmp(arg, "--ride-name") == 0) {
@@ -212,9 +223,9 @@ static int parseCmdArgs(int argc, char *argv[], CmdArgs *pArgs)
         char startTime[128];
         struct tm tm;
         strftime(startTime, sizeof (startTime), "%Y-%m-%dT%H:%M:%S", localtime_r(&pArgs->startTime, &tm));
-        MSGLOG(INFO, "rideName=%s controlFile=%s videoFile=%s startTime=%s maxRiders=%d reportPeriod=%d",
+        MSGLOG(INFO, "rideName=%s controlFile=%s videoFile=%s startTime=%s maxRiders=%d progUpdPeriod=%d leaderboardPeriod=%d",
                 pArgs->rideName, pArgs->controlFile, pArgs->videoFile,
-                startTime, pArgs->maxRiders, pArgs->reportPeriod);
+                startTime, pArgs->maxRiders, pArgs->progUpdPeriod, pArgs->leaderboardPeriod);
     }
 
     return 0;
